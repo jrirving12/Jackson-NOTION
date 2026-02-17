@@ -1,24 +1,35 @@
 # Tequila CRM App (Expo)
 
-React Native (Expo) app for iOS and web. Phase 0: scaffold + auth placeholder.
+React Native (Expo) app for iOS and web. Phase 1: auth + iMessage-style messaging.
 
-## Setup
+## Run in Chrome (web) first
 
-```bash
-npm install
-```
+1. **Point the app at your Railway API**
+   ```bash
+   cd app
+   cp .env.example .env
+   ```
+   Edit `.env` if needed: `EXPO_PUBLIC_API_URL=https://linds-production-2547.up.railway.app` (no trailing slash).
 
-Optional: copy `.env.example` to `.env` and set `EXPO_PUBLIC_API_URL` to your backend (e.g. `http://localhost:3000`). For physical device, use your machine's LAN IP (e.g. `http://192.168.1.x:3000`).
+2. **Install and start web**
+   ```bash
+   npm install
+   npm run web
+   ```
 
-## Run
+3. **Open Chrome** to the URL Expo prints (usually **http://localhost:8081**). Sign in with the same email/password you used in the API (e.g. `test@example.com` / `password123`).
 
-```bash
-npm start
-```
+**If login fails from Chrome:** In Railway, set the API service variable `FRONTEND_URL=http://localhost:8081` so CORS allows your browser. Redeploy if needed.
 
-- **Web:** open http://localhost:8081  
-- **iOS:** press `i` in terminal or scan QR with Expo Go  
-- **Android:** press `a` or scan QR
+## Run locally (dev)
+
+- **Web:** `npm run web` or `npm run dev` then press `w` → http://localhost:8081  
+- **iOS:** `npm run dev` then press `i` or scan QR with Expo Go  
+- **Android:** `npm run dev` then press `a` or scan QR  
+
+(In production/Railway, `npm start` serves the static build from `dist/`; locally use `npm run dev` or `npm run web` for the dev server.)
+
+Set `EXPO_PUBLIC_API_URL` in `.env` to your backend (Railway URL for deployed API, or `http://localhost:3000` for local backend).
 
 ## Build for TestFlight (Phase 1+)
 
