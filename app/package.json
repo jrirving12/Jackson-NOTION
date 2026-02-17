@@ -3,13 +3,13 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "serve dist -s -l 0.0.0.0:${PORT:-3000}",
+    "start": "node scripts/serve-dist.js",
     "dev": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
     "build:web": "expo export -p web",
-    "serve:web": "serve dist -s -l 0.0.0.0:${PORT:-3000}"
+    "serve:web": "node scripts/serve-dist.js"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
