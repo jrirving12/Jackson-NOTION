@@ -92,3 +92,13 @@ export function verifyToken(token: string): { userId: string; email: string } {
   const decoded = jwt.verify(token, config.jwtSecret) as { sub: string; email: string };
   return { userId: decoded.sub, email: decoded.email };
 }
+
+export async function getCurrentUser(userId: string): Promise<User | null> {
+  const pool = getPool();
+  const result = await pool.query(
+    'SELECT id, email, name, role, assigned_region_id, created_at FROM users WHERE id = $1',
+    [userId]
+  );
+  if (result.rows.length === 0) return null;
+  return mapRowToUser(result.rows[0]);
+}

@@ -1,8 +1,28 @@
 import { Router, Request, Response } from 'express';
+import { requireAuth, AuthLocals } from '../middleware/auth.js';
 import * as authService from '../services/authService.js';
 import { logger } from '../logger.js';
 
 const router = Router();
+
+router.get('/me', requireAuth, async (req: Request, res: Response) => {
+  const { userId } = res.locals as AuthLocals;
+  const user = await authService.getCurrentUser(userId);
+  if (!user) {
+    res.status(404).json({ error: 'NOT_FOUND' });
+    return;
+  }
+  res.json({
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      role: user.role,
+      assigned_region_id: user.assigned_region_id,
+      created_at: user.created_at,
+    },
+  });
+});
 
 router.post('/register', async (req: Request, res: Response) => {
   try {
