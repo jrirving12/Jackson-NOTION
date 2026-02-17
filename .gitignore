@@ -1,0 +1,16 @@
+# Env (never commit secrets)
+.env
+.env.local
+
+# Backend
+backend/node_modules/
+backend/dist/
+
+# App
+app/node_modules/
+app/.expo/
+app/dist/
+app/web-build/
+
+# OS
+.DS_Store
