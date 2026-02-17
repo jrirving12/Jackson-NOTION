@@ -1,0 +1,13 @@
+{
+  "name": "tequila-crm",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tequila CRM – backend API (deploy from repo root for Railway)",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "build": "cd backend && npm ci && npm run build",
+    "start": "cd backend && node dist/index.js"
+  }
+}

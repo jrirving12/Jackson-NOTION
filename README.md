@@ -44,3 +44,10 @@ npx expo start
 - **Phase 3–6** – Data pipeline, CRM backend, CRM app, polish and handoff
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for architecture overview.
+
+## Deploy backend to Railway
+
+1. New Project → Add **PostgreSQL**, then **GitHub Repo** (this repo).
+2. For the API service: **Settings** → **Root Directory** can stay empty (root `package.json` runs `backend` build/start).
+3. **Variables:** `DATABASE_URL` (from PostgreSQL service), `JWT_SECRET`, `FRONTEND_URL`.
+4. After deploy, run migrations: from your machine set `DATABASE_URL` to Railway’s Postgres URL, then `cd backend && npm run db:migrate`.
