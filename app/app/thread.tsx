@@ -82,6 +82,9 @@ export default function ThreadScreen() {
   const [addingMember, setAddingMember] = useState(false);
   const [allUsers, setAllUsers] = useState<User[]>([]);
   const [memberSearch, setMemberSearch] = useState('');
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const [editName, setEditName] = useState('');
+  const [saving, setSaving] = useState(false);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -250,6 +253,60 @@ export default function ThreadScreen() {
     }
   };
 
+  const openSettings = () => {
+    setEditName(threadName || '');
+    setSettingsVisible(true);
+  };
+
+  const saveChannelName = async () => {
+    if (!token || !channelId || !editName.trim()) return;
+    setSaving(true);
+    try {
+      await api(`/api/channels/${channelId}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ name: editName.trim() }),
+      });
+      showAlert('Renamed', `Channel renamed to "${editName.trim()}".`);
+      setSettingsVisible(false);
+    } catch {
+      showAlert('Error', 'Could not rename channel.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const removeMember = async (memberId: string, memberName: string) => {
+    if (!token || !channelId) return;
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', `Remove ${memberName}`],
+          cancelButtonIndex: 0,
+          destructiveButtonIndex: 1,
+        },
+        async (idx) => {
+          if (idx === 1) await doRemoveMember(memberId);
+        },
+      );
+    } else {
+      await doRemoveMember(memberId);
+    }
+  };
+
+  const doRemoveMember = async (memberId: string) => {
+    if (!token || !channelId) return;
+    try {
+      await api(`/api/channels/${channelId}/members/${memberId}`, {
+        method: 'DELETE',
+        token,
+      });
+      await loadMembers();
+    } catch (e) {
+      showAlert('Error', e instanceof Error ? e.message : 'Could not remove member.');
+    }
+  };
+
   if (!user) return null;
 
   const isSent = (m: Message) => m.sender_id === user.id;
@@ -292,13 +349,150 @@ export default function ThreadScreen() {
       />
 
       {/* Channel members modal */}
-      <Modal visible={membersVisible} animationType="slide" presentationStyle="pageSheet">
+      <Modal
+        visible={membersVisible}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => { setMembersVisible(false); setAddingMember(false); setSettingsVisible(false); }}
+      >
         <View style={[styles.modalContainer, dark && { backgroundColor: '#1C1C1E' }]}>
-          {!addingMember ? (
+          {settingsVisible ? (
+            /* ──── Settings view ──── */
             <>
               <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
                 <View style={styles.modalHeaderRow}>
+                  <TouchableOpacity style={styles.modalHeaderSide} onPress={() => setSettingsVisible(false)} activeOpacity={0.6}>
+                    <Text style={styles.modalBackText}>Back</Text>
+                  </TouchableOpacity>
+                  <View style={styles.modalHeaderCenter}>
+                    <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>Settings</Text>
+                  </View>
                   <View style={styles.modalHeaderSide} />
+                </View>
+              </View>
+
+              <View style={{ paddingHorizontal: 20, paddingTop: 20, flex: 1 }}>
+                <Text style={[styles.settingsLabel, dark && { color: '#8E8E93' }]}>Channel Name</Text>
+                <TextInput
+                  style={[styles.settingsInput, dark && styles.settingsInputDark]}
+                  value={editName}
+                  onChangeText={setEditName}
+                  placeholder="Channel name"
+                  placeholderTextColor={dark ? '#636366' : '#8E8E93'}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  style={[styles.settingsSaveBtn, (!editName.trim() || saving) && { opacity: 0.5 }]}
+                  onPress={saveChannelName}
+                  disabled={!editName.trim() || saving}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.settingsSaveBtnText}>{saving ? 'Saving...' : 'Save Name'}</Text>
+                </TouchableOpacity>
+
+                <Text style={[styles.settingsLabel, dark && { color: '#8E8E93' }, { marginTop: 32 }]}>
+                  Remove Members
+                </Text>
+                <FlatList
+                  data={members.filter((m) => m.user_id !== user?.id)}
+                  keyExtractor={(m) => m.user_id}
+                  contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}
+                  ListEmptyComponent={
+                    <Text style={{ color: '#8E8E93', fontSize: 15, paddingVertical: 12 }}>
+                      No other members to remove
+                    </Text>
+                  }
+                  renderItem={({ item: m }) => {
+                    const initials = m.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+                    return (
+                      <View style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
+                        <View style={[styles.memberAvatar, { backgroundColor: hashColor(m.name) }]}>
+                          <Text style={styles.memberAvatarText}>{initials}</Text>
+                        </View>
+                        <View style={styles.memberInfo}>
+                          <Text style={[styles.memberName, dark && { color: '#fff' }]}>{m.name}</Text>
+                          <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{m.email}</Text>
+                        </View>
+                        <TouchableOpacity onPress={() => removeMember(m.user_id, m.name)} activeOpacity={0.6}>
+                          <Ionicons name="remove-circle" size={24} color="#FF3B30" />
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  }}
+                />
+              </View>
+            </>
+          ) : addingMember ? (
+            /* ──── Add member view ──── */
+            <>
+              <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <TouchableOpacity style={styles.modalHeaderSide} onPress={() => setAddingMember(false)} activeOpacity={0.6}>
+                    <Text style={styles.modalBackText}>Back</Text>
+                  </TouchableOpacity>
+                  <View style={styles.modalHeaderCenter}>
+                    <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>Add Member</Text>
+                  </View>
+                  <View style={styles.modalHeaderSide} />
+                </View>
+                <View style={[styles.modalSearchWrap, dark && { backgroundColor: 'rgba(118,118,128,0.24)' }]}>
+                  <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={[styles.modalSearchInput, dark && { color: '#fff' }]}
+                    placeholder="Search users..."
+                    placeholderTextColor={dark ? '#636366' : '#8E8E93'}
+                    value={memberSearch}
+                    onChangeText={setMemberSearch}
+                    autoFocus
+                  />
+                </View>
+              </View>
+              <FlatList
+                data={allUsers.filter(
+                  (u) =>
+                    !members.some((m) => m.user_id === u.id) &&
+                    (u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                      u.email.toLowerCase().includes(memberSearch.toLowerCase()))
+                )}
+                keyExtractor={(u) => u.id}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
+                ListEmptyComponent={
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 15, color: '#8E8E93' }}>
+                      {memberSearch.trim() ? 'No matching users' : 'All users are already members'}
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item: u }) => {
+                  const initials = u.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}
+                      onPress={() => addMember(u.id)}
+                      activeOpacity={0.6}
+                    >
+                      <View style={[styles.memberAvatar, { backgroundColor: hashColor(u.name) }]}>
+                        <Text style={styles.memberAvatarText}>{initials}</Text>
+                      </View>
+                      <View style={styles.memberInfo}>
+                        <Text style={[styles.memberName, dark && { color: '#fff' }]}>{u.name}</Text>
+                        <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{u.email}</Text>
+                      </View>
+                      <Ionicons name="add-circle-outline" size={24} color="#007AFF" />
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </>
+          ) : (
+            /* ──── Members list view ──── */
+            <>
+              <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <TouchableOpacity style={styles.modalHeaderSide} onPress={openSettings} activeOpacity={0.6}>
+                    <Ionicons name="settings-outline" size={24} color="#007AFF" />
+                  </TouchableOpacity>
                   <View style={styles.modalHeaderCenter}>
                     <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>{title}</Text>
                     <Text style={[styles.modalSubtitle, dark && { color: '#8E8E93' }]}>
@@ -341,68 +535,6 @@ export default function ThreadScreen() {
               >
                 <Text style={styles.modalDoneText}>Done</Text>
               </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
-                <View style={styles.modalHeaderRow}>
-                  <TouchableOpacity style={styles.modalHeaderSide} onPress={() => setAddingMember(false)} activeOpacity={0.6}>
-                    <Text style={styles.modalBackText}>Back</Text>
-                  </TouchableOpacity>
-                  <View style={styles.modalHeaderCenter}>
-                    <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>Add Member</Text>
-                  </View>
-                  <View style={styles.modalHeaderSide} />
-                </View>
-                <View style={[styles.modalSearchWrap, dark && { backgroundColor: 'rgba(118,118,128,0.24)' }]}>
-                  <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 6 }} />
-                  <TextInput
-                    style={[styles.modalSearchInput, dark && { color: '#fff' }]}
-                    placeholder="Search users..."
-                    placeholderTextColor={dark ? '#636366' : '#8E8E93'}
-                    value={memberSearch}
-                    onChangeText={setMemberSearch}
-                    autoFocus
-                  />
-                </View>
-              </View>
-              <FlatList
-                data={allUsers.filter(
-                  (u) =>
-                    !members.some((m) => m.user_id === u.id) &&
-                    (u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
-                      u.email.toLowerCase().includes(memberSearch.toLowerCase()))
-                )}
-                keyExtractor={(u) => u.id}
-                keyboardShouldPersistTaps="handled"
-                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
-                ListEmptyComponent={
-                  <View style={{ padding: 24, alignItems: 'center' }}>
-                    <Text style={[{ fontSize: 15, color: '#8E8E93' }]}>
-                      {memberSearch.trim() ? 'No matching users' : 'All users are already members'}
-                    </Text>
-                  </View>
-                }
-                renderItem={({ item: u }) => {
-                  const initials = u.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-                  return (
-                    <TouchableOpacity
-                      style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}
-                      onPress={() => addMember(u.id)}
-                      activeOpacity={0.6}
-                    >
-                      <View style={[styles.memberAvatar, { backgroundColor: hashColor(u.name) }]}>
-                        <Text style={styles.memberAvatarText}>{initials}</Text>
-                      </View>
-                      <View style={styles.memberInfo}>
-                        <Text style={[styles.memberName, dark && { color: '#fff' }]}>{u.name}</Text>
-                        <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{u.email}</Text>
-                      </View>
-                      <Ionicons name="add-circle-outline" size={24} color="#007AFF" />
-                    </TouchableOpacity>
-                  );
-                }}
-              />
             </>
           )}
         </View>
@@ -744,4 +876,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   modalDoneText: { color: '#fff', fontSize: 17, fontWeight: '600' },
+
+  settingsLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#8E8E93',
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+    marginBottom: 8,
+  },
+  settingsInput: {
+    fontSize: 17,
+    color: '#000',
+    backgroundColor: 'rgba(118,118,128,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  settingsInputDark: {
+    color: '#fff',
+    backgroundColor: 'rgba(118,118,128,0.24)',
+  },
+  settingsSaveBtn: {
+    backgroundColor: '#007AFF',
+    borderRadius: 10,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  settingsSaveBtnText: { color: '#fff', fontSize: 16, fontWeight: '600' },
 });

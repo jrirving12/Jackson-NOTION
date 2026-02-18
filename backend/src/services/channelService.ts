@@ -107,6 +107,30 @@ export async function getChannelMembers(channelId: string, userId: string): Prom
   return result.rows as ChannelMember[];
 }
 
+export async function renameChannel(channelId: string, name: string, userId: string): Promise<void> {
+  const pool = getPool();
+  await pool.query(
+    `UPDATE channels SET name = $1
+     WHERE id = $2
+       AND EXISTS (SELECT 1 FROM channel_members WHERE channel_id = $2 AND user_id = $3 AND role = 'admin')`,
+    [name.trim(), channelId, userId]
+  );
+}
+
+export async function removeMemberFromChannel(channelId: string, memberId: string, userId: string): Promise<void> {
+  const pool = getPool();
+  const isAdmin = await pool.query(
+    "SELECT 1 FROM channel_members WHERE channel_id = $1 AND user_id = $2 AND role = 'admin'",
+    [channelId, userId]
+  );
+  if (isAdmin.rows.length === 0) throw new Error('NOT_ADMIN');
+  if (memberId === userId) throw new Error('CANNOT_REMOVE_SELF');
+  await pool.query(
+    'DELETE FROM channel_members WHERE channel_id = $1 AND user_id = $2',
+    [channelId, memberId]
+  );
+}
+
 function mapChannelRow(row: Record<string, unknown>): ChannelWithLastMessage {
   return {
     id: row.id as string,

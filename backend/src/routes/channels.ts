@@ -60,6 +60,41 @@ router.post('/:id/members', async (req: Request, res: Response) => {
   }
 });
 
+router.patch('/:id', async (req: Request, res: Response) => {
+  const { userId } = res.locals as AuthLocals;
+  const { name } = req.body as { name?: string };
+  if (!name || !name.trim()) {
+    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'name required' });
+    return;
+  }
+  try {
+    await channelService.renameChannel(req.params.id, name, userId);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error({ err }, 'Rename channel failed');
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
+router.delete('/:id/members/:memberId', async (req: Request, res: Response) => {
+  const { userId } = res.locals as AuthLocals;
+  try {
+    await channelService.removeMemberFromChannel(req.params.id, req.params.memberId, userId);
+    res.json({ ok: true });
+  } catch (err) {
+    if (err instanceof Error && err.message === 'NOT_ADMIN') {
+      res.status(403).json({ error: 'NOT_ADMIN', message: 'Only admins can remove members' });
+      return;
+    }
+    if (err instanceof Error && err.message === 'CANNOT_REMOVE_SELF') {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'Cannot remove yourself' });
+      return;
+    }
+    logger.error({ err }, 'Remove member failed');
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
 router.get('/:id', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   const channel = await channelService.getChannel(req.params.id, userId);
