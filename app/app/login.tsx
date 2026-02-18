@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, TouchableOpacity } from 'react-native';
+import { StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, TouchableOpacity } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
+import { showAlert } from '@/utils/alert';
 
 export default function LoginScreen() {
   const { login } = useAuth();
@@ -13,21 +14,20 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email.trim() || !password) {
-      Alert.alert('Error', 'Enter email and password');
+      showAlert('Error', 'Enter email and password');
       return;
     }
     setLoading(true);
     try {
       await login(email.trim(), password);
-      router.replace('/(tabs)');
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Invalid email or password';
       if (msg.includes('pending admin approval') || msg.includes('PENDING_APPROVAL')) {
-        Alert.alert('Pending approval', 'Your account is waiting for admin approval. You can sign in once approved.');
+        showAlert('Pending approval', 'Your account is waiting for admin approval. You can sign in once approved.');
       } else if (msg.includes('not approved') || msg.includes('ACCOUNT_REJECTED')) {
-        Alert.alert('Account not approved', 'Your account was not approved. Contact an administrator.');
+        showAlert('Account not approved', 'Your account was not approved. Contact an administrator.');
       } else {
-        Alert.alert('Login failed', msg);
+        showAlert('Login failed', msg);
       }
     } finally {
       setLoading(false);
@@ -115,6 +115,9 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 17,
     marginBottom: 12,
+    minHeight: 48,
+    color: '#000',
+    backgroundColor: '#fff',
   },
   button: {
     backgroundColor: '#007AFF',

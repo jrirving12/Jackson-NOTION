@@ -52,12 +52,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     });
-    await Promise.all([
-      SecureStore.setItemAsync(TOKEN_KEY, data.token),
-      SecureStore.setItemAsync(USER_KEY, JSON.stringify(data.user)),
-    ]);
     setToken(data.token);
     setUser(data.user);
+    try {
+      await Promise.all([
+        SecureStore.setItemAsync(TOKEN_KEY, data.token),
+        SecureStore.setItemAsync(USER_KEY, JSON.stringify(data.user)),
+      ]);
+    } catch {
+      // On web, SecureStore may fail; auth state is still in memory
+    }
   }, []);
 
   const register = useCallback(async (email: string, password: string, name: string) => {

@@ -1,13 +1,13 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
+import { Stack, useRouter, usePathname } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -52,15 +52,28 @@ export default function RootLayout() {
 
 function RootLayoutNav() {
   const colorScheme = useColorScheme();
+  const { token, loading } = useAuth();
+  const pathname = usePathname();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (loading) return;
+    const onAuthScreen = pathname === '/login' || pathname === '/signup';
+    if (!token && !onAuthScreen) {
+      router.replace('/login');
+    } else if (token && onAuthScreen) {
+      router.replace('/');
+    }
+  }, [token, loading, pathname]);
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="login" options={{ title: 'Sign in' }} />
-        <Stack.Screen name="signup" options={{ title: 'Create account' }} />
-        <Stack.Screen name="thread" options={{ title: 'Message' }} />
-        <Stack.Screen name="new-message" options={{ title: 'New message' }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false, headerBackTitle: '' }} />
+        <Stack.Screen name="login" options={{ title: 'Sign in', headerBackTitle: '' }} />
+        <Stack.Screen name="signup" options={{ title: 'Create account', headerBackTitle: '' }} />
+        <Stack.Screen name="thread" options={{ title: 'Message', headerBackTitle: '' }} />
+        <Stack.Screen name="new-message" options={{ title: 'New message', headerBackTitle: '' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
     </ThemeProvider>

@@ -38,6 +38,7 @@ export type Channel = {
   created_by: string | null;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_sender_id: string | null;
 };
 
 export type Message = {
@@ -56,4 +57,5 @@ export type DMThread = {
   other_user_email: string;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_sender_id: string | null;
 };

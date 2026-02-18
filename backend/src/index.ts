@@ -18,7 +18,10 @@ const httpServer = http.createServer(app);
 const io = createSocketServer(httpServer);
 app.set('io', io);
 
-app.use(cors({ origin: config.frontendUrl, credentials: true }));
+app.use(cors({
+  origin: config.nodeEnv === 'production' ? config.frontendUrl : true,
+  credentials: true,
+}));
 app.use(express.json());
 
 app.use('/api/health', healthRouter);

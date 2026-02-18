@@ -1,8 +1,9 @@
 import { useState } from 'react';
-import { StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, TouchableOpacity } from 'react-native';
+import { StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform, TextInput, TouchableOpacity } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
+import { showAlert } from '@/utils/alert';
 
 export default function SignupScreen() {
   const { register } = useAuth();
@@ -14,17 +15,17 @@ export default function SignupScreen() {
 
   const handleSignup = async () => {
     if (!email.trim() || !password || !name.trim()) {
-      Alert.alert('Error', 'Enter name, email, and password');
+      showAlert('Error', 'Enter name, email, and password');
       return;
     }
     if (password.length < 8) {
-      Alert.alert('Error', 'Password must be at least 8 characters');
+      showAlert('Error', 'Password must be at least 8 characters');
       return;
     }
     setLoading(true);
     try {
       await register(email.trim(), password, name.trim());
-      Alert.alert(
+      showAlert(
         'Account created',
         'An admin must approve your account before you can sign in. You will be notified when you can log in.',
         [{ text: 'OK', onPress: () => router.replace('/login') }]
@@ -32,9 +33,9 @@ export default function SignupScreen() {
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Signup failed';
       if (msg.includes('already registered') || msg.includes('EMAIL_IN_USE')) {
-        Alert.alert('Email in use', 'That email is already registered. Sign in or use another email.');
+        showAlert('Email in use', 'That email is already registered. Sign in or use another email.');
       } else {
-        Alert.alert('Signup failed', msg);
+        showAlert('Signup failed', msg);
       }
     } finally {
       setLoading(false);
@@ -132,6 +133,9 @@ const styles = StyleSheet.create({
     padding: 14,
     fontSize: 17,
     marginBottom: 12,
+    minHeight: 48,
+    color: '#000',
+    backgroundColor: '#fff',
   },
   button: {
     backgroundColor: '#007AFF',

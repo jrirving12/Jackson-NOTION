@@ -6,28 +6,63 @@ import {
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
+  useColorScheme,
+  View,
+  Text,
+  Image,
+  ActionSheetIOS,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import { Text, View } from '@/components/Themed';
+import { useHeaderHeight } from '@react-navigation/elements';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { api, Message } from '@/lib/api';
 import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
+import * as ImagePicker from 'expo-image-picker';
+import { showAlert } from '@/utils/alert';
+
+function formatMessageTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+}
+
+function isSameDay(a: string, b: string): boolean {
+  const da = new Date(a);
+  const db = new Date(b);
+  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+}
+
+function formatDateHeader(iso: string): string {
+  const d = new Date(iso);
+  const now = new Date();
+  const diff = now.getTime() - d.getTime();
+  if (diff < 86400000 && d.getDate() === now.getDate()) return 'Today';
+  if (diff < 172800000) return 'Yesterday';
+  return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
+}
 
 export default function ThreadScreen() {
-  const params = useLocalSearchParams<{ channelId?: string; dmThreadId?: string }>();
+  const params = useLocalSearchParams<{ channelId?: string; dmThreadId?: string; name?: string; unreadCount?: string }>();
   const channelId = Array.isArray(params.channelId) ? params.channelId[0] : params.channelId;
   const dmThreadId = Array.isArray(params.dmThreadId) ? params.dmThreadId[0] : params.dmThreadId;
+  const threadName = Array.isArray(params.name) ? params.name[0] : params.name;
+  const unreadCount = parseInt(Array.isArray(params.unreadCount) ? params.unreadCount[0] : params.unreadCount || '0', 10) || 0;
   const { token, user } = useAuth();
   const router = useRouter();
+  const scheme = useColorScheme();
+  const dark = scheme === 'dark';
+  const headerHeight = useHeaderHeight();
+  const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [pickedImage, setPickedImage] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
+  const inputRef = useRef<TextInput>(null);
   const isChannel = Boolean(channelId);
 
-  const title = isChannel ? 'Channel' : 'Message';
+  const title = threadName || (isChannel ? 'Channel' : 'Message');
 
   const loadMessages = useCallback(async () => {
     if (!token) return;
@@ -70,77 +105,240 @@ export default function ThreadScreen() {
     };
   }, [token, isChannel, channelId, dmThreadId]);
 
+  // Scroll to bottom only when messages change
+  const prevCountRef = useRef(0);
+  useEffect(() => {
+    if (messages.length > prevCountRef.current) {
+      setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 150);
+    }
+    prevCountRef.current = messages.length;
+  }, [messages.length]);
+
+  const sendingRef = useRef(false);
+
   const send = async () => {
     const body = input.trim();
-    if (!body || !token || sending) return;
+    if ((!body && !pickedImage) || !token || sendingRef.current) return;
+    sendingRef.current = true;
     setSending(true);
+    const savedInput = input;
     setInput('');
+    setPickedImage(null);
     try {
       const path = isChannel
         ? `/api/messages/channel/${channelId}`
         : `/api/messages/dm/${dmThreadId}`;
+      const messageBody = pickedImage ? (body || '[Photo]') : body;
       await api(path, {
         method: 'POST',
         token,
-        body: JSON.stringify({ body }),
+        body: JSON.stringify({ body: messageBody }),
       });
-      loadMessages();
+      await loadMessages();
     } catch {
-      setInput(body);
+      setInput(savedInput);
     } finally {
+      sendingRef.current = false;
       setSending(false);
     }
+  };
+
+  const pickImage = async () => {
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: ['Cancel', 'Take Photo', 'Choose from Library'],
+          cancelButtonIndex: 0,
+        },
+        async (buttonIndex) => {
+          if (buttonIndex === 1) launchCamera();
+          else if (buttonIndex === 2) launchLibrary();
+        },
+      );
+    } else {
+      launchLibrary();
+    }
+  };
+
+  const launchCamera = async () => {
+    const perm = await ImagePicker.requestCameraPermissionsAsync();
+    if (!perm.granted) {
+      showAlert('Permission needed', 'Camera access is required to take photos.');
+      return;
+    }
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
+    if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
+  };
+
+  const launchLibrary = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      showAlert('Permission needed', 'Photo library access is required.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      quality: 0.8,
+      allowsEditing: true,
+    });
+    if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
   };
 
   if (!user) return null;
 
   const isSent = (m: Message) => m.sender_id === user.id;
+  const hasContent = input.trim() || pickedImage;
 
   return (
     <>
-      <Stack.Screen options={{ title }} />
+      <Stack.Screen
+        options={{
+          title,
+          headerBackTitle: '',
+          headerStyle: { backgroundColor: dark ? '#000' : '#fff' },
+          headerTintColor: '#007AFF',
+          headerTitleStyle: { color: dark ? '#fff' : '#000', fontWeight: '600', fontSize: 17 },
+          headerShadowVisible: false,
+          headerLeft: () => (
+            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.6}>
+              <Text style={styles.backArrow}>‹</Text>
+              {unreadCount > 0 && (
+                <View style={styles.backBadge}>
+                  <Text style={styles.backBadgeText}>{unreadCount}</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+          ),
+        }}
+      />
       <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        style={[styles.container, dark && styles.containerDark]}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={headerHeight}
       >
         <FlatList
           ref={listRef}
           data={messages}
           keyExtractor={(m) => m.id}
-          contentContainerStyle={styles.listContent}
-          onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
-          renderItem={({ item }) => (
-            <View style={[styles.bubbleWrap, isSent(item) ? styles.bubbleWrapRight : styles.bubbleWrapLeft]}>
-              <View style={[styles.bubble, isSent(item) ? styles.bubbleSent : styles.bubbleReceived]}>
-                <Text style={[styles.bubbleText, isSent(item) && styles.bubbleTextSent]}>
-                  {item.body}
-                </Text>
-                <Text style={[styles.bubbleTime, isSent(item) && styles.bubbleTimeSent]}>
-                  {new Date(item.created_at).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}
-                </Text>
-              </View>
+          keyboardDismissMode="interactive"
+          keyboardShouldPersistTaps="always"
+          contentContainerStyle={[
+            styles.listContent,
+            messages.length === 0 && styles.listEmpty,
+          ]}
+          ListEmptyComponent={
+            <View style={styles.emptyThread}>
+              <Text style={[styles.emptyThreadText, dark && { color: '#8E8E93' }]}>
+                Send a message to start the conversation
+              </Text>
             </View>
-          )}
+          }
+          renderItem={({ item, index }) => {
+            const sent = isSent(item);
+            const prev = index > 0 ? messages[index - 1] : null;
+            const next = index < messages.length - 1 ? messages[index + 1] : null;
+            const showDate = !prev || !isSameDay(prev.created_at, item.created_at);
+            const showSender = isChannel && !sent && (!prev || prev.sender_id !== item.sender_id);
+            const isFirstInGroup = !prev || prev.sender_id !== item.sender_id || showDate;
+            const isLastInGroup = !next || next.sender_id !== item.sender_id || (next && !isSameDay(item.created_at, next.created_at));
+
+            return (
+              <View>
+                {showDate && (
+                  <View style={styles.dateHeader}>
+                    <Text style={[styles.dateHeaderText, dark && { color: '#8E8E93' }]}>
+                      {formatDateHeader(item.created_at)}
+                    </Text>
+                  </View>
+                )}
+                {showSender && (
+                  <Text style={[styles.senderName, dark && { color: '#8E8E93' }]}>
+                    {item.sender_name}
+                  </Text>
+                )}
+                <View
+                  style={[
+                    styles.bubbleRow,
+                    sent ? styles.bubbleRowRight : styles.bubbleRowLeft,
+                    !isFirstInGroup && styles.bubbleRowTight,
+                  ]}
+                >
+                  <View
+                    style={[
+                      styles.bubble,
+                      sent ? styles.bubbleSent : (dark ? styles.bubbleReceivedDark : styles.bubbleReceived),
+                      sent
+                        ? { borderTopRightRadius: isFirstInGroup ? 18 : 4, borderBottomRightRadius: isLastInGroup ? 18 : 4 }
+                        : { borderTopLeftRadius: isFirstInGroup ? 18 : 4, borderBottomLeftRadius: isLastInGroup ? 18 : 4 },
+                    ]}
+                  >
+                    <Text style={[styles.bubbleText, sent && styles.bubbleTextSent, dark && !sent && { color: '#fff' }]}>
+                      {item.body}
+                    </Text>
+                  </View>
+                </View>
+                {isLastInGroup && (
+                  <Text
+                    style={[
+                      styles.bubbleTime,
+                      sent ? styles.bubbleTimeRight : styles.bubbleTimeLeft,
+                      dark && { color: '#636366' },
+                    ]}
+                  >
+                    {formatMessageTime(item.created_at)}
+                  </Text>
+                )}
+              </View>
+            );
+          }}
+          ListFooterComponent={<View style={{ height: 8 }} />}
         />
-        <View style={styles.inputRow}>
-          <TextInput
-            style={styles.input}
-            placeholder="Message"
-            placeholderTextColor="#999"
-            value={input}
-            onChangeText={setInput}
-            multiline
-            maxLength={2000}
-            editable={!sending}
-            onSubmitEditing={send}
-          />
+
+        {/* Compose area */}
+        <View style={[styles.composeArea, dark && styles.composeAreaDark, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+          <TouchableOpacity style={styles.plusBtn} onPress={pickImage} activeOpacity={0.6}>
+            <View style={[styles.plusBtnCircle, dark && styles.plusBtnCircleDark]}>
+              <Text style={[styles.plusBtnText, dark && { color: '#fff' }]}>+</Text>
+            </View>
+          </TouchableOpacity>
+
+          <View style={[styles.composeBubble, dark && styles.composeBubbleDark]}>
+            {pickedImage && (
+              <View style={styles.imagePreviewWrap}>
+                <Image source={{ uri: pickedImage }} style={styles.imagePreview} resizeMode="cover" />
+                <TouchableOpacity
+                  style={styles.imageCloseBtn}
+                  onPress={() => setPickedImage(null)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.imageCloseBtnInner}>
+                    <Text style={styles.imageCloseText}>✕</Text>
+                  </View>
+                </TouchableOpacity>
+              </View>
+            )}
+            <TextInput
+              ref={inputRef}
+              style={[styles.composeInput, dark && styles.composeInputDark]}
+              placeholder={pickedImage ? 'Add comment or Send' : 'Message'}
+              placeholderTextColor={dark ? '#636366' : '#8E8E93'}
+              value={input}
+              onChangeText={setInput}
+              multiline
+              maxLength={2000}
+              blurOnSubmit={false}
+            />
+          </View>
+
           <TouchableOpacity
-            style={[styles.sendBtn, (!input.trim() || sending) && styles.sendBtnDisabled]}
+            style={[styles.sendBtn, !hasContent && styles.sendBtnHidden]}
             onPress={send}
-            disabled={!input.trim() || sending}
+            disabled={!hasContent || sending}
+            activeOpacity={0.7}
           >
-            <Text style={styles.sendBtnText}>Send</Text>
+            <View style={[styles.sendBtnCircle, sending && { opacity: 0.5 }]}>
+              <Text style={styles.sendBtnArrow}>↑</Text>
+            </View>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -149,78 +347,135 @@ export default function ThreadScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  listContent: { padding: 12, paddingBottom: 8 },
-  bubbleWrap: { marginVertical: 4 },
-  bubbleWrapLeft: { alignItems: 'flex-start' },
-  bubbleWrapRight: { alignItems: 'flex-end' },
+  container: { flex: 1, backgroundColor: '#fff' },
+  containerDark: { backgroundColor: '#000' },
+
+  listContent: { paddingHorizontal: 16, paddingTop: 8 },
+  listEmpty: { flex: 1, justifyContent: 'center' },
+
+  emptyThread: { alignItems: 'center', padding: 24 },
+  emptyThreadText: { fontSize: 15, color: '#8E8E93', textAlign: 'center' },
+
+  dateHeader: { alignItems: 'center', marginVertical: 16 },
+  dateHeaderText: { fontSize: 12, fontWeight: '600', color: '#8E8E93' },
+
+  senderName: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: '#8E8E93',
+    marginLeft: 4,
+    marginTop: 8,
+    marginBottom: 2,
+  },
+
+  bubbleRow: { marginVertical: 1 },
+  bubbleRowTight: { marginVertical: 0.5 },
+  bubbleRowLeft: { alignItems: 'flex-start', marginRight: 60 },
+  bubbleRowRight: { alignItems: 'flex-end', marginLeft: 60 },
+
   bubble: {
-    maxWidth: '80%',
-    paddingHorizontal: 14,
-    paddingVertical: 10,
+    maxWidth: '100%',
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     borderRadius: 18,
-    borderBottomLeftRadius: 4,
   },
-  bubbleSent: {
+  bubbleSent: { backgroundColor: '#007AFF' },
+  bubbleReceived: { backgroundColor: '#E5E5EA' },
+  bubbleReceivedDark: { backgroundColor: '#26252A' },
+
+  bubbleText: { fontSize: 17, color: '#000', lineHeight: 22 },
+  bubbleTextSent: { color: '#fff' },
+
+  bubbleTime: { fontSize: 11, color: '#8E8E93', marginTop: 2, marginBottom: 4 },
+  bubbleTimeLeft: { marginLeft: 4 },
+  bubbleTimeRight: { textAlign: 'right', marginRight: 4 },
+
+  backBtn: { flexDirection: 'row', alignItems: 'center', paddingRight: 8, paddingVertical: 4 },
+  backArrow: { fontSize: 34, color: '#007AFF', fontWeight: '300', marginTop: -2 },
+  backBadge: {
     backgroundColor: '#007AFF',
-    borderBottomRightRadius: 4,
-    borderBottomLeftRadius: 18,
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 6,
+    marginLeft: 2,
   },
-  bubbleReceived: {
-    backgroundColor: '#E5E5EA',
-    borderBottomRightRadius: 18,
-  },
-  bubbleText: {
-    fontSize: 17,
-    color: '#000',
-  },
-  bubbleTextSent: {
-    color: '#fff',
-  },
-  bubbleTime: {
-    fontSize: 11,
-    opacity: 0.7,
-    marginTop: 4,
-    color: '#000',
-  },
-  bubbleTimeSent: {
-    color: 'rgba(255,255,255,0.8)',
-  },
-  inputRow: {
+  backBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+
+  composeArea: {
     flexDirection: 'row',
     alignItems: 'flex-end',
-    padding: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 8,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#ccc',
-    backgroundColor: '#f2f2f7',
-  },
-  input: {
-    flex: 1,
-    minHeight: 36,
-    maxHeight: 100,
+    paddingHorizontal: 8,
+    paddingTop: 6,
     backgroundColor: '#fff',
-    borderRadius: 18,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    fontSize: 17,
-    marginRight: 8,
-    borderWidth: 1,
-    borderColor: '#ccc',
   },
-  sendBtn: {
-    backgroundColor: '#007AFF',
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    borderRadius: 18,
+  composeAreaDark: { backgroundColor: '#000' },
+
+  plusBtn: { marginRight: 6, marginBottom: 4 },
+  plusBtnCircle: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#E5E5EA',
     justifyContent: 'center',
+    alignItems: 'center',
   },
-  sendBtnDisabled: {
-    opacity: 0.5,
+  plusBtnCircleDark: { backgroundColor: '#3A3A3C' },
+  plusBtnText: { fontSize: 22, fontWeight: '300', color: '#000', marginTop: -1 },
+
+  composeBubble: {
+    flex: 1,
+    backgroundColor: 'rgba(118,118,128,0.12)',
+    borderRadius: 20,
+    overflow: 'hidden',
   },
-  sendBtnText: {
-    color: '#fff',
+  composeBubbleDark: { backgroundColor: 'rgba(118,118,128,0.24)' },
+
+  imagePreviewWrap: {
+    margin: 6,
+    marginBottom: 0,
+    borderRadius: 14,
+    overflow: 'hidden',
+  },
+  imagePreview: {
+    width: '100%',
+    height: 180,
+    borderRadius: 14,
+    backgroundColor: '#1C1C1E',
+  },
+  imageCloseBtn: { position: 'absolute', top: 6, right: 6 },
+  imageCloseBtnInner: {
+    width: 26,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  imageCloseText: { color: '#fff', fontSize: 13, fontWeight: '700' },
+
+  composeInput: {
+    paddingHorizontal: 14,
+    paddingTop: 10,
+    paddingBottom: 10,
     fontSize: 17,
-    fontWeight: '600',
+    color: '#000',
+    maxHeight: 120,
+    minHeight: 36,
   },
+  composeInputDark: { color: '#fff' },
+
+  sendBtn: { marginLeft: 6, marginBottom: 4 },
+  sendBtnHidden: { opacity: 0 },
+  sendBtnCircle: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#007AFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  sendBtnArrow: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: -1 },
 });

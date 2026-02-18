@@ -13,6 +13,7 @@ export interface DMThreadWithOther extends DMThread {
   other_user_email: string;
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_sender_id: string | null;
 }
 
 export async function listDMThreadsForUser(userId: string): Promise<DMThreadWithOther[]> {
@@ -22,7 +23,8 @@ export async function listDMThreadsForUser(userId: string): Promise<DMThreadWith
             CASE WHEN t.user1_id = $1 THEN t.user2_id ELSE t.user1_id END AS other_user_id,
             u.name AS other_user_name, u.email AS other_user_email,
             (SELECT m.created_at FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
-            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview
+            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview,
+            (SELECT m.sender_id FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_sender_id
      FROM dm_threads t
      JOIN users u ON u.id = CASE WHEN t.user1_id = $1 THEN t.user2_id ELSE t.user1_id END
      WHERE t.user1_id = $1 OR t.user2_id = $1
@@ -39,6 +41,7 @@ export async function listDMThreadsForUser(userId: string): Promise<DMThreadWith
     other_user_email: row.other_user_email,
     last_message_at: row.last_message_at ?? null,
     last_message_preview: row.last_message_preview ?? null,
+    last_message_sender_id: (row.last_message_sender_id as string) ?? null,
   })) as DMThreadWithOther[];
 }
 
@@ -65,7 +68,8 @@ export async function getDMThread(threadId: string, userId: string): Promise<DMT
             CASE WHEN t.user1_id = $2 THEN t.user2_id ELSE t.user1_id END AS other_user_id,
             u.name AS other_user_name, u.email AS other_user_email,
             (SELECT m.created_at FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
-            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview
+            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview,
+            (SELECT m.sender_id FROM messages m WHERE m.dm_thread_id = t.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_sender_id
      FROM dm_threads t
      JOIN users u ON u.id = CASE WHEN t.user1_id = $2 THEN t.user2_id ELSE t.user1_id END
      WHERE t.id = $1 AND (t.user1_id = $2 OR t.user2_id = $2)`,
@@ -83,5 +87,6 @@ export async function getDMThread(threadId: string, userId: string): Promise<DMT
     other_user_email: row.other_user_email as string,
     last_message_at: (row.last_message_at as string) ?? null,
     last_message_preview: (row.last_message_preview as string) ?? null,
+    last_message_sender_id: (row.last_message_sender_id as string) ?? null,
   };
 }

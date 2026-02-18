@@ -13,6 +13,7 @@ export interface Channel {
 export interface ChannelWithLastMessage extends Channel {
   last_message_at: string | null;
   last_message_preview: string | null;
+  last_message_sender_id: string | null;
 }
 
 export async function listChannelsForUser(userId: string): Promise<ChannelWithLastMessage[]> {
@@ -20,7 +21,8 @@ export async function listChannelsForUser(userId: string): Promise<ChannelWithLa
   const result = await pool.query(
     `SELECT c.id, c.name, c.type, c.created_at, c.created_by,
             (SELECT m.created_at FROM messages m WHERE m.channel_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_at,
-            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.channel_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview
+            (SELECT LEFT(m.body, 60) FROM messages m WHERE m.channel_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_preview,
+            (SELECT m.sender_id FROM messages m WHERE m.channel_id = c.id ORDER BY m.created_at DESC LIMIT 1) AS last_message_sender_id
      FROM channels c
      INNER JOIN channel_members cm ON cm.channel_id = c.id AND cm.user_id = $1
      ORDER BY last_message_at DESC NULLS LAST, c.created_at DESC`,
@@ -92,5 +94,6 @@ function mapChannelRow(row: Record<string, unknown>): ChannelWithLastMessage {
     created_by: (row.created_by as string) ?? null,
     last_message_at: (row.last_message_at as string) ?? null,
     last_message_preview: (row.last_message_preview as string) ?? null,
+    last_message_sender_id: (row.last_message_sender_id as string) ?? null,
   };
 }
