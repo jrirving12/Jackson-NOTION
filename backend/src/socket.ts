@@ -28,6 +28,8 @@ export function createSocketServer(httpServer: HttpServer): Server {
     const userId = (socket.data as { userId: string }).userId;
     logger.info({ userId, socketId: socket.id }, 'Socket connected');
 
+    socket.join(`user:${userId}`);
+
     socket.on('join_channel', (channelId: string) => {
       socket.join(`channel:${channelId}`);
     });
@@ -55,4 +57,8 @@ export function emitChannelMessage(io: Server, channelId: string, message: unkno
 
 export function emitDMMessage(io: Server, threadId: string, message: unknown): void {
   io.to(`dm:${threadId}`).emit('new_message', message);
+}
+
+export function emitToUser(io: Server, userId: string, event: string, data: unknown): void {
+  io.to(`user:${userId}`).emit(event, data);
 }

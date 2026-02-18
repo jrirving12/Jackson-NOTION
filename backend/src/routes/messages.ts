@@ -2,7 +2,8 @@ import { Router, Request, Response } from 'express';
 import { Server } from 'socket.io';
 import { requireAuth, AuthLocals } from '../middleware/auth.js';
 import * as messageService from '../services/messageService.js';
-import { emitChannelMessage, emitDMMessage } from '../socket.js';
+import { emitChannelMessage, emitDMMessage, emitToUser } from '../socket.js';
+import { getPool } from '../db/client.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -32,7 +33,10 @@ router.post('/channel/:channelId', async (req: Request, res: Response) => {
   try {
     const message = await messageService.sendChannelMessage(channelId, userId, body);
     const io = req.app.get('io') as Server;
-    if (io) emitChannelMessage(io, channelId, message);
+    if (io) {
+      emitChannelMessage(io, channelId, message);
+      notifyChannelMembers(io, channelId, userId, message);
+    }
     res.status(201).json(message);
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_MEMBER') {
@@ -68,7 +72,10 @@ router.post('/dm/:threadId', async (req: Request, res: Response) => {
   try {
     const message = await messageService.sendDMMessage(threadId, userId, body);
     const io = req.app.get('io') as Server;
-    if (io) emitDMMessage(io, threadId, message);
+    if (io) {
+      emitDMMessage(io, threadId, message);
+      notifyDMParticipants(io, threadId, userId, message);
+    }
     res.status(201).json(message);
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_IN_THREAD') {
@@ -79,5 +86,53 @@ router.post('/dm/:threadId', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'INTERNAL_ERROR' });
   }
 });
+
+async function notifyChannelMembers(io: Server, channelId: string, senderId: string, message: unknown) {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT user_id FROM channel_members WHERE channel_id = $1',
+      [channelId]
+    );
+    for (const row of result.rows) {
+      const memberId = row.user_id as string;
+      emitToUser(io, memberId, 'conversation_update', {
+        type: 'channel',
+        id: channelId,
+        senderId,
+        message,
+      });
+    }
+  } catch (err) {
+    logger.error({ err }, 'Failed to notify channel members');
+  }
+}
+
+async function notifyDMParticipants(io: Server, threadId: string, senderId: string, message: unknown) {
+  try {
+    const pool = getPool();
+    const result = await pool.query(
+      'SELECT user1_id, user2_id FROM dm_threads WHERE id = $1',
+      [threadId]
+    );
+    if (result.rows.length > 0) {
+      const { user1_id, user2_id } = result.rows[0];
+      emitToUser(io, user1_id as string, 'conversation_update', {
+        type: 'dm',
+        id: threadId,
+        senderId,
+        message,
+      });
+      emitToUser(io, user2_id as string, 'conversation_update', {
+        type: 'dm',
+        id: threadId,
+        senderId,
+        message,
+      });
+    }
+  } catch (err) {
+    logger.error({ err }, 'Failed to notify DM participants');
+  }
+}
 
 export default router;

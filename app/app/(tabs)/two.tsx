@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -16,6 +16,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { api, Channel, DMThread } from '@/lib/api';
+import { API_BASE_URL } from '@/constants/Config';
+import { io as ioConnect, Socket } from 'socket.io-client';
 
 type ConversationItem = {
   type: 'channel' | 'dm';
@@ -24,6 +26,13 @@ type ConversationItem = {
   preview: string | null;
   time: string | null;
   unread: boolean;
+};
+
+type ConversationUpdate = {
+  type: 'channel' | 'dm';
+  id: string;
+  senderId: string;
+  message: { body: string; created_at: string; sender_id: string };
 };
 
 const AVATAR_COLORS = [
@@ -66,6 +75,8 @@ export default function MessagesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
   const readSetRef = useRef<Set<string>>(new Set());
+  const socketRef = useRef<Socket | null>(null);
+  const activeThreadRef = useRef<string | null>(null);
 
   const load = useCallback(async () => {
     if (!token || !user) return;
@@ -102,8 +113,55 @@ export default function MessagesScreen() {
     }
   }, [token, user]);
 
+  // Socket connection for real-time conversation updates
+  useEffect(() => {
+    if (!token) return;
+    const socket = ioConnect(API_BASE_URL, {
+      auth: { token },
+      transports: ['websocket', 'polling'],
+    });
+    socketRef.current = socket;
+
+    socket.on('conversation_update', (update: ConversationUpdate) => {
+      const key = `${update.type}-${update.id}`;
+      const isFromMe = update.senderId === user?.id;
+      const isActiveThread = activeThreadRef.current === key;
+
+      if (!isFromMe && !isActiveThread) {
+        readSetRef.current.delete(key);
+      }
+
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.type === update.type && c.id === update.id);
+        const preview = update.message.body?.substring(0, 60) || null;
+        const time = update.message.created_at;
+        const unread = !isFromMe && !isActiveThread && !readSetRef.current.has(key);
+
+        if (idx >= 0) {
+          const updated = [...prev];
+          updated[idx] = { ...updated[idx], preview, time, unread };
+          updated.sort((a, b) => {
+            const ta = a.time ? new Date(a.time).getTime() : 0;
+            const tb = b.time ? new Date(b.time).getTime() : 0;
+            return tb - ta;
+          });
+          return updated;
+        }
+        // New conversation not in list yet — trigger a full reload
+        load();
+        return prev;
+      });
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+    };
+  }, [token, user?.id, load]);
+
   useFocusEffect(
     useCallback(() => {
+      activeThreadRef.current = null;
       if (token) load();
     }, [token, load])
   );
@@ -117,6 +175,7 @@ export default function MessagesScreen() {
   const markRead = (item: ConversationItem) => {
     const key = `${item.type}-${item.id}`;
     readSetRef.current.add(key);
+    activeThreadRef.current = key;
     setConversations((prev) =>
       prev.map((c) => (c.type === item.type && c.id === item.id ? { ...c, unread: false } : c))
     );
