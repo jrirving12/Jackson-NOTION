@@ -70,4 +70,15 @@ router.get('/:id', async (req: Request, res: Response) => {
   res.json(channel);
 });
 
+router.get('/:id/members', async (req: Request, res: Response) => {
+  const { userId } = res.locals as AuthLocals;
+  try {
+    const members = await channelService.getChannelMembers(req.params.id, userId);
+    res.json({ members });
+  } catch (err) {
+    logger.error({ err }, 'Get channel members failed');
+    res.status(500).json({ error: 'INTERNAL_ERROR' });
+  }
+});
+
 export default router;

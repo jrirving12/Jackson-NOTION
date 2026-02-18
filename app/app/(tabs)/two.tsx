@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   FlatList,
@@ -8,6 +8,7 @@ import {
   View,
   Text,
   TextInput,
+  KeyboardAvoidingView,
   Platform,
 } from 'react-native';
 import { useRouter } from 'expo-router';
@@ -64,6 +65,7 @@ export default function MessagesScreen() {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [search, setSearch] = useState('');
+  const readSetRef = useRef<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!token || !user) return;
@@ -79,7 +81,7 @@ export default function MessagesScreen() {
           name: c.name,
           preview: c.last_message_preview,
           time: c.last_message_at,
-          unread: !!(c.last_message_sender_id && c.last_message_sender_id !== user.id),
+          unread: !!(c.last_message_sender_id && c.last_message_sender_id !== user.id) && !readSetRef.current.has(`channel-${c.id}`),
         })),
         ...dmRes.threads.map((t) => ({
           type: 'dm' as const,
@@ -87,7 +89,7 @@ export default function MessagesScreen() {
           name: t.other_user_name,
           preview: t.last_message_preview,
           time: t.last_message_at,
-          unread: !!(t.last_message_sender_id && t.last_message_sender_id !== user.id),
+          unread: !!(t.last_message_sender_id && t.last_message_sender_id !== user.id) && !readSetRef.current.has(`dm-${t.id}`),
         })),
       ].sort((a, b) => {
         const ta = a.time ? new Date(a.time).getTime() : 0;
@@ -110,6 +112,14 @@ export default function MessagesScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const markRead = (item: ConversationItem) => {
+    const key = `${item.type}-${item.id}`;
+    readSetRef.current.add(key);
+    setConversations((prev) =>
+      prev.map((c) => (c.type === item.type && c.id === item.id ? { ...c, unread: false } : c))
+    );
   };
 
   const filtered = search.trim()
@@ -138,7 +148,10 @@ export default function MessagesScreen() {
   }
 
   return (
-    <View style={[styles.container, dark && styles.bgDark, { paddingTop: insets.top }]}>
+    <KeyboardAvoidingView
+      style={[styles.container, dark && styles.bgDark, { paddingTop: insets.top }]}
+      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+    >
       {/* Header */}
       <View style={[styles.header, dark && styles.headerDark]}>
         <TouchableOpacity style={styles.headerSide}>
@@ -159,6 +172,7 @@ export default function MessagesScreen() {
         }
         contentContainerStyle={filtered.length === 0 ? styles.emptyContainer : undefined}
         keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
         ListEmptyComponent={
           <View style={styles.empty}>
             <Text style={styles.emptyIcon}>💬</Text>
@@ -172,6 +186,7 @@ export default function MessagesScreen() {
           <TouchableOpacity
             style={[styles.row, dark && styles.rowDark]}
             onPress={() => {
+              markRead(item);
               const otherUnread = conversations.filter((c) => c.unread && !(c.type === item.type && c.id === item.id)).length;
               router.push({
                 pathname: '/thread',
@@ -182,7 +197,6 @@ export default function MessagesScreen() {
             }}
             activeOpacity={0.6}
           >
-            {/* Blue unread dot */}
             <View style={styles.dotCol}>
               {item.unread && <View style={styles.unreadDot} />}
             </View>
@@ -197,7 +211,7 @@ export default function MessagesScreen() {
                 </Text>
                 <View style={styles.rowRight}>
                   {item.time ? (
-                    <Text style={[styles.time, dark && styles.textMuted, item.unread && { color: '#007AFF' }]}>
+                    <Text style={[styles.time, dark && styles.textMuted]}>
                       {formatTime(item.time)}
                     </Text>
                   ) : null}
@@ -229,8 +243,8 @@ export default function MessagesScreen() {
         )}
       />
 
-      {/* Bottom bar with safe area padding */}
-      <View style={[styles.bottomBar, dark && styles.bottomBarDark, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+      {/* Bottom bar */}
+      <View style={[styles.bottomBar, dark && styles.bottomBarDark, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={[styles.searchWrap, dark && styles.searchWrapDark]}>
           <Text style={[styles.searchIcon, dark && { color: '#8E8E93' }]}>⌕</Text>
           <TextInput
@@ -252,7 +266,7 @@ export default function MessagesScreen() {
           </View>
         </TouchableOpacity>
       </View>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 

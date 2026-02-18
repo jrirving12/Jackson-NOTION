@@ -11,6 +11,7 @@ import {
   Text,
   Image,
   ActionSheetIOS,
+  Modal,
 } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
@@ -21,6 +22,13 @@ import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
 import * as ImagePicker from 'expo-image-picker';
 import { showAlert } from '@/utils/alert';
+
+type ChannelMember = {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+};
 
 function formatMessageTime(iso: string): string {
   return new Date(iso).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
@@ -41,6 +49,17 @@ function formatDateHeader(iso: string): string {
   return d.toLocaleDateString([], { weekday: 'long', month: 'short', day: 'numeric' });
 }
 
+const AVATAR_COLORS = [
+  '#007AFF', '#34C759', '#FF9500', '#FF3B30', '#AF52DE',
+  '#5856D6', '#FF2D55', '#00C7BE', '#FF6482', '#30B0C7',
+];
+
+function hashColor(name: string): string {
+  let h = 0;
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h);
+  return AVATAR_COLORS[Math.abs(h) % AVATAR_COLORS.length];
+}
+
 export default function ThreadScreen() {
   const params = useLocalSearchParams<{ channelId?: string; dmThreadId?: string; name?: string; unreadCount?: string }>();
   const channelId = Array.isArray(params.channelId) ? params.channelId[0] : params.channelId;
@@ -57,6 +76,8 @@ export default function ThreadScreen() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [pickedImage, setPickedImage] = useState<string | null>(null);
+  const [membersVisible, setMembersVisible] = useState(false);
+  const [members, setMembers] = useState<ChannelMember[]>([]);
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -105,7 +126,6 @@ export default function ThreadScreen() {
     };
   }, [token, isChannel, channelId, dmThreadId]);
 
-  // Scroll to bottom only when messages change
   const prevCountRef = useRef(0);
   useEffect(() => {
     if (messages.length > prevCountRef.current) {
@@ -184,6 +204,17 @@ export default function ThreadScreen() {
     if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
   };
 
+  const openMembers = async () => {
+    if (!isChannel || !channelId || !token) return;
+    try {
+      const data = await api<{ members: ChannelMember[] }>(`/api/channels/${channelId}/members`, { token });
+      setMembers(data.members);
+      setMembersVisible(true);
+    } catch {
+      showAlert('Error', 'Could not load members.');
+    }
+  };
+
   if (!user) return null;
 
   const isSent = (m: Message) => m.sender_id === user.id;
@@ -193,15 +224,21 @@ export default function ThreadScreen() {
     <>
       <Stack.Screen
         options={{
-          title,
-          headerBackTitle: '',
+          headerBackVisible: false,
           headerStyle: { backgroundColor: dark ? '#000' : '#fff' },
           headerTintColor: '#007AFF',
-          headerTitleStyle: { color: dark ? '#fff' : '#000', fontWeight: '600', fontSize: 17 },
           headerShadowVisible: false,
+          headerTitle: () =>
+            isChannel ? (
+              <TouchableOpacity onPress={openMembers} activeOpacity={0.6}>
+                <Text style={[styles.headerTitleText, dark && { color: '#fff' }]}>{title}</Text>
+              </TouchableOpacity>
+            ) : (
+              <Text style={[styles.headerTitleText, dark && { color: '#fff' }]}>{title}</Text>
+            ),
           headerLeft: () => (
             <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.6}>
-              <Text style={styles.backArrow}>‹</Text>
+              <Text style={styles.backChevron}>{'‹'}</Text>
               {unreadCount > 0 && (
                 <View style={styles.backBadge}>
                   <Text style={styles.backBadgeText}>{unreadCount}</Text>
@@ -211,6 +248,50 @@ export default function ThreadScreen() {
           ),
         }}
       />
+
+      {/* Channel members modal */}
+      <Modal visible={membersVisible} animationType="slide" presentationStyle="pageSheet">
+        <View style={[styles.modalContainer, dark && { backgroundColor: '#1C1C1E' }]}>
+          <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
+            <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>{title}</Text>
+            <Text style={[styles.modalSubtitle, dark && { color: '#8E8E93' }]}>
+              {members.length} {members.length === 1 ? 'member' : 'members'}
+            </Text>
+          </View>
+          <FlatList
+            data={members}
+            keyExtractor={(m) => m.user_id}
+            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
+            renderItem={({ item: m }) => {
+              const initials = m.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+              return (
+                <View style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
+                  <View style={[styles.memberAvatar, { backgroundColor: hashColor(m.name) }]}>
+                    <Text style={styles.memberAvatarText}>{initials}</Text>
+                  </View>
+                  <View style={styles.memberInfo}>
+                    <Text style={[styles.memberName, dark && { color: '#fff' }]}>{m.name}</Text>
+                    <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{m.email}</Text>
+                  </View>
+                  {m.role === 'admin' && (
+                    <View style={styles.adminBadge}>
+                      <Text style={styles.adminBadgeText}>Admin</Text>
+                    </View>
+                  )}
+                </View>
+              );
+            }}
+          />
+          <TouchableOpacity
+            style={[styles.modalDone, { marginBottom: insets.bottom + 8 }]}
+            onPress={() => setMembersVisible(false)}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.modalDoneText}>Done</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
+
       <KeyboardAvoidingView
         style={[styles.container, dark && styles.containerDark]}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -350,6 +431,8 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
   containerDark: { backgroundColor: '#000' },
 
+  headerTitleText: { fontSize: 17, fontWeight: '600', color: '#000' },
+
   listContent: { paddingHorizontal: 16, paddingTop: 8 },
   listEmpty: { flex: 1, justifyContent: 'center' },
 
@@ -390,19 +473,28 @@ const styles = StyleSheet.create({
   bubbleTimeLeft: { marginLeft: 4 },
   bubbleTimeRight: { textAlign: 'right', marginRight: 4 },
 
-  backBtn: { flexDirection: 'row', alignItems: 'center', paddingRight: 8, paddingVertical: 4 },
-  backArrow: { fontSize: 34, color: '#007AFF', fontWeight: '300', marginTop: -2 },
+  backBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: -8,
+  },
+  backChevron: {
+    fontSize: 38,
+    color: '#007AFF',
+    fontWeight: '300',
+    lineHeight: 38,
+  },
   backBadge: {
     backgroundColor: '#007AFF',
-    borderRadius: 10,
-    minWidth: 20,
-    height: 20,
+    borderRadius: 9,
+    minWidth: 18,
+    height: 18,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    marginLeft: 2,
+    paddingHorizontal: 5,
+    marginLeft: 1,
   },
-  backBadgeText: { color: '#fff', fontSize: 12, fontWeight: '700' },
+  backBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 
   composeArea: {
     flexDirection: 'row',
@@ -478,4 +570,53 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   sendBtnArrow: { color: '#fff', fontSize: 18, fontWeight: '700', marginTop: -1 },
+
+  modalContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  modalHeader: {
+    paddingTop: 20,
+    paddingBottom: 16,
+    paddingHorizontal: 20,
+    alignItems: 'center',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.1)',
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
+  modalSubtitle: { fontSize: 14, color: '#8E8E93', marginTop: 4 },
+
+  memberRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(0,0,0,0.08)',
+  },
+  memberAvatar: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  memberAvatarText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  memberInfo: { flex: 1, marginLeft: 12 },
+  memberName: { fontSize: 16, fontWeight: '600', color: '#000' },
+  memberEmail: { fontSize: 13, color: '#8E8E93', marginTop: 1 },
+  adminBadge: {
+    backgroundColor: 'rgba(0,122,255,0.12)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  adminBadgeText: { fontSize: 12, fontWeight: '600', color: '#007AFF' },
+  modalDone: {
+    marginHorizontal: 20,
+    backgroundColor: '#007AFF',
+    borderRadius: 12,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  modalDoneText: { color: '#fff', fontSize: 17, fontWeight: '600' },
 });

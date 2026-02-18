@@ -85,6 +85,28 @@ export async function addMemberToChannel(
   );
 }
 
+export interface ChannelMember {
+  user_id: string;
+  name: string;
+  email: string;
+  role: string;
+  joined_at: string;
+}
+
+export async function getChannelMembers(channelId: string, userId: string): Promise<ChannelMember[]> {
+  const pool = getPool();
+  const result = await pool.query(
+    `SELECT u.id AS user_id, u.name, u.email, cm.role, cm.joined_at
+     FROM channel_members cm
+     JOIN users u ON u.id = cm.user_id
+     WHERE cm.channel_id = $1
+       AND EXISTS (SELECT 1 FROM channel_members WHERE channel_id = $1 AND user_id = $2)
+     ORDER BY cm.role DESC, u.name ASC`,
+    [channelId, userId]
+  );
+  return result.rows as ChannelMember[];
+}
+
 function mapChannelRow(row: Record<string, unknown>): ChannelWithLastMessage {
   return {
     id: row.id as string,
