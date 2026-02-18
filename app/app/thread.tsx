@@ -16,6 +16,7 @@ import {
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '@/context/AuthContext';
 import { api, Message } from '@/lib/api';
 import { API_BASE_URL } from '@/constants/Config';
@@ -225,8 +226,10 @@ export default function ThreadScreen() {
       <Stack.Screen
         options={{
           headerBackVisible: false,
+          headerBackTitle: '',
+          headerBackButtonDisplayMode: 'minimal',
           headerStyle: { backgroundColor: dark ? '#000' : '#fff' },
-          headerTintColor: '#007AFF',
+          headerTintColor: dark ? '#fff' : '#000',
           headerShadowVisible: false,
           headerTitle: () =>
             isChannel ? (
@@ -237,8 +240,13 @@ export default function ThreadScreen() {
               <Text style={[styles.headerTitleText, dark && { color: '#fff' }]}>{title}</Text>
             ),
           headerLeft: () => (
-            <TouchableOpacity onPress={() => router.back()} style={styles.backBtn} activeOpacity={0.6}>
-              <Text style={styles.backChevron}>{'‹'}</Text>
+            <TouchableOpacity
+              onPress={() => router.back()}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              style={styles.backBtn}
+              activeOpacity={0.6}
+            >
+              <Ionicons name="chevron-back" size={28} color="#007AFF" />
               {unreadCount > 0 && (
                 <View style={styles.backBadge}>
                   <Text style={styles.backBadgeText}>{unreadCount}</Text>
@@ -476,13 +484,6 @@ const styles = StyleSheet.create({
   backBtn: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginLeft: -8,
-  },
-  backChevron: {
-    fontSize: 38,
-    color: '#007AFF',
-    fontWeight: '300',
-    lineHeight: 38,
   },
   backBadge: {
     backgroundColor: '#007AFF',
@@ -492,7 +493,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 5,
-    marginLeft: 1,
+    marginLeft: -2,
   },
   backBadgeText: { color: '#fff', fontSize: 11, fontWeight: '700' },
 

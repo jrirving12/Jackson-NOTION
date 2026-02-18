@@ -72,7 +72,7 @@ function RootLayoutNav() {
         <Stack.Screen name="(tabs)" options={{ headerShown: false, headerBackTitle: '' }} />
         <Stack.Screen name="login" options={{ title: 'Sign in', headerBackTitle: '' }} />
         <Stack.Screen name="signup" options={{ title: 'Create account', headerBackTitle: '' }} />
-        <Stack.Screen name="thread" options={{ title: 'Message', headerBackTitle: '' }} />
+        <Stack.Screen name="thread" options={{ title: 'Message', headerBackTitle: '', headerBackButtonDisplayMode: 'minimal' }} />
         <Stack.Screen name="new-message" options={{ title: 'New message', headerBackTitle: '' }} />
         <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
       </Stack>
