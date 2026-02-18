@@ -101,8 +101,8 @@ export default function ThreadScreen() {
 
   useEffect(() => {
     if (!token || (!channelId && !dmThreadId)) {
-      router.back();
-      return;
+      const t = setTimeout(() => router.back(), 0);
+      return () => clearTimeout(t);
     }
     loadMessages();
   }, [token, channelId, dmThreadId, loadMessages]);
