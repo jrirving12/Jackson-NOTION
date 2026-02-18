@@ -22,7 +22,6 @@ import { api, Message, User } from '@/lib/api';
 import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
 import * as ImagePicker from 'expo-image-picker';
-import * as FileSystem from 'expo-file-system';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { showAlert } from '@/utils/alert';
 
@@ -162,12 +161,11 @@ export default function ThreadScreen() {
           const resized = await ImageManipulator.manipulateAsync(
             savedImage,
             [{ resize: { width: 600 } }],
-            { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+            { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG, base64: true }
           );
-          const base64 = await FileSystem.readAsStringAsync(resized.uri, {
-            encoding: FileSystem.EncodingType.Base64,
-          });
-          imageDataUri = `data:image/jpeg;base64,${base64}`;
+          if (resized.base64) {
+            imageDataUri = `data:image/jpeg;base64,${resized.base64}`;
+          }
         } catch (imgErr) {
           console.error('Image processing failed:', imgErr);
           setPickedImage(savedImage);
