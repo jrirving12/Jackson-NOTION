@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { verifyToken } from '../services/authService.js';
+import { getCurrentUser } from '../services/authService.js';
 import { logger } from '../logger.js';
 
 export interface AuthLocals {
@@ -23,4 +24,17 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
     logger.debug('Invalid or expired token');
     res.status(401).json({ error: 'UNAUTHORIZED', message: 'Invalid or expired token' });
   }
+}
+
+export function requireAdmin(req: Request, res: Response, next: NextFunction): void {
+  const { userId } = res.locals as AuthLocals;
+  getCurrentUser(userId)
+    .then((user) => {
+      if (!user || user.role !== 'admin') {
+        res.status(403).json({ error: 'FORBIDDEN', message: 'Admin access required' });
+        return;
+      }
+      next();
+    })
+    .catch(next);
 }

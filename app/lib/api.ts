@@ -19,11 +19,13 @@ export async function api<T>(
 }
 
 export type LoginResponse = { user: User; token: string };
+export type RegisterResponse = { user: User; message: string };
 export type User = {
   id: string;
   email: string;
   name: string;
   role: string;
+  status?: string;
   assigned_region_id: string | null;
   created_at: string;
 };

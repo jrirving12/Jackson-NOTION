@@ -4,30 +4,37 @@ import { Stack, useRouter } from 'expo-router';
 import { Text, View, TextInput, TouchableOpacity } from '@/components/Themed';
 import { useAuth } from '@/context/AuthContext';
 
-export default function LoginScreen() {
-  const { login } = useAuth();
+export default function SignupScreen() {
+  const { register } = useAuth();
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
-    if (!email.trim() || !password) {
-      Alert.alert('Error', 'Enter email and password');
+  const handleSignup = async () => {
+    if (!email.trim() || !password || !name.trim()) {
+      Alert.alert('Error', 'Enter name, email, and password');
+      return;
+    }
+    if (password.length < 8) {
+      Alert.alert('Error', 'Password must be at least 8 characters');
       return;
     }
     setLoading(true);
     try {
-      await login(email.trim(), password);
-      router.replace('/(tabs)');
+      await register(email.trim(), password, name.trim());
+      Alert.alert(
+        'Account created',
+        'An admin must approve your account before you can sign in. You will be notified when you can log in.',
+        [{ text: 'OK', onPress: () => router.replace('/login') }]
+      );
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Invalid email or password';
-      if (msg.includes('pending admin approval') || msg.includes('PENDING_APPROVAL')) {
-        Alert.alert('Pending approval', 'Your account is waiting for admin approval. You can sign in once approved.');
-      } else if (msg.includes('not approved') || msg.includes('ACCOUNT_REJECTED')) {
-        Alert.alert('Account not approved', 'Your account was not approved. Contact an administrator.');
+      const msg = e instanceof Error ? e.message : 'Signup failed';
+      if (msg.includes('already registered') || msg.includes('EMAIL_IN_USE')) {
+        Alert.alert('Email in use', 'That email is already registered. Sign in or use another email.');
       } else {
-        Alert.alert('Login failed', msg);
+        Alert.alert('Signup failed', msg);
       }
     } finally {
       setLoading(false);
@@ -36,14 +43,24 @@ export default function LoginScreen() {
 
   return (
     <>
-      <Stack.Screen options={{ title: 'Login' }} />
+      <Stack.Screen options={{ title: 'Create account' }} />
       <KeyboardAvoidingView
         style={styles.container}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.inner}>
           <Text style={styles.title}>Tequila CRM</Text>
-          <Text style={styles.subtitle}>Sign in</Text>
+          <Text style={styles.subtitle}>Create account</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Name"
+            placeholderTextColor="#999"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+            autoComplete="name"
+            editable={!loading}
+          />
           <TextInput
             style={styles.input}
             placeholder="Email"
@@ -57,27 +74,27 @@ export default function LoginScreen() {
           />
           <TextInput
             style={styles.input}
-            placeholder="Password"
+            placeholder="Password (min 8 characters)"
             placeholderTextColor="#999"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            autoComplete="password"
+            autoComplete="password-new"
             editable={!loading}
           />
           <TouchableOpacity
             style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleLogin}
+            onPress={handleSignup}
             disabled={loading}
           >
             {loading ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.buttonText}>Sign in</Text>
+              <Text style={styles.buttonText}>Create account</Text>
             )}
           </TouchableOpacity>
-          <TouchableOpacity style={styles.link} onPress={() => router.replace('/signup')}>
-            <Text style={styles.linkText}>Create an account</Text>
+          <TouchableOpacity style={styles.link} onPress={() => router.replace('/login')}>
+            <Text style={styles.linkText}>Already have an account? Sign in</Text>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>

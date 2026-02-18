@@ -9,13 +9,14 @@ CREATE TABLE IF NOT EXISTS regions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- Users (auth + future role/region for CRM)
+-- Users (auth + future role/region for CRM; status for admin approval)
 CREATE TABLE IF NOT EXISTS users (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email      TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   name       TEXT NOT NULL,
   role       TEXT NOT NULL DEFAULT 'rep' CHECK (role IN ('rep', 'manager', 'admin')),
+  status     TEXT NOT NULL DEFAULT 'pending_approval' CHECK (status IN ('pending_approval', 'active', 'rejected')),
   assigned_region_id UUID REFERENCES regions(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now()

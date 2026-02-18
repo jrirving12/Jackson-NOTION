@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import * as SecureStore from 'expo-secure-store';
-import { api, LoginResponse, User } from '@/lib/api';
+import { api, LoginResponse, RegisterResponse, User } from '@/lib/api';
 
 const TOKEN_KEY = 'tequila_crm_token';
 const USER_KEY = 'tequila_crm_user';
@@ -10,6 +10,7 @@ type AuthContextType = {
   token: string | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
 };
@@ -59,6 +60,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(data.user);
   }, []);
 
+  const register = useCallback(async (email: string, password: string, name: string) => {
+    await api<RegisterResponse>('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({ email, password, name }),
+    });
+  }, []);
+
   const logout = useCallback(async () => {
     await Promise.all([
       SecureStore.deleteItemAsync(TOKEN_KEY),
@@ -76,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   return (
-    <AuthContext.Provider value={{ user, token, loading, login, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, token, loading, login, register, logout, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

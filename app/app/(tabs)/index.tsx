@@ -1,17 +1,18 @@
-import { StyleSheet } from 'react-native';
-import { Link } from 'expo-router';
+import { StyleSheet, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Text, View } from '@/components/Themed';
 
 export default function HomeScreen() {
+  const router = useRouter();
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Tequila CRM</Text>
       <Text style={styles.subtitle}>Phase 0 – Foundation</Text>
       <View style={styles.separator} lightColor="#eee" darkColor="rgba(255,255,255,0.1)" />
       <Text style={styles.hint}>Backend: auth + health. Phase 1: messaging.</Text>
-      <Link href="/login" style={styles.link}>
-        Login (placeholder)
-      </Link>
+      <TouchableOpacity onPress={() => router.push('/(tabs)/two')}>
+        <Text style={styles.link}>Messages</Text>
+      </TouchableOpacity>
     </View>
   );
 }
