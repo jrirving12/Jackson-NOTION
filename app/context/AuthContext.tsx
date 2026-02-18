@@ -29,8 +29,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         SecureStore.getItemAsync(USER_KEY),
       ]);
       if (storedToken && storedUser) {
-        setToken(storedToken);
-        setUser(JSON.parse(storedUser) as User);
+        try {
+          const data = await api<{ user: User }>('/api/auth/me', { token: storedToken });
+          setToken(storedToken);
+          setUser(data.user);
+        } catch {
+          await Promise.all([
+            SecureStore.deleteItemAsync(TOKEN_KEY),
+            SecureStore.deleteItemAsync(USER_KEY),
+          ]).catch(() => {});
+          setToken(null);
+          setUser(null);
+        }
       } else {
         setToken(null);
         setUser(null);

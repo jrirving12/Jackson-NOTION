@@ -108,7 +108,8 @@ export default function MessagesScreen() {
         return tb - ta;
       });
       setConversations(items);
-    } catch {
+    } catch (err) {
+      console.error('Failed to load conversations:', err);
       setConversations([]);
     }
   }, [token, user]);
