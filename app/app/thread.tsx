@@ -155,8 +155,12 @@ export default function ThreadScreen() {
     setInput('');
     setPickedImage(null);
     try {
-      let imageDataUri: string | undefined;
+      const msgPath = isChannel
+        ? `/api/messages/channel/${channelId}`
+        : `/api/messages/dm/${dmThreadId}`;
+
       if (savedImage) {
+        let imageDataUri: string | undefined;
         try {
           const resized = await ImageManipulator.manipulateAsync(
             savedImage,
@@ -172,16 +176,21 @@ export default function ThreadScreen() {
           setInput(savedInput);
           return;
         }
+        await api(msgPath, {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ body: 'Sent a photo', image_url: imageDataUri }),
+        });
       }
-      const msgPath = isChannel
-        ? `/api/messages/channel/${channelId}`
-        : `/api/messages/dm/${dmThreadId}`;
-      const messageBody = body || (savedImage ? 'Sent a photo' : '');
-      await api(msgPath, {
-        method: 'POST',
-        token,
-        body: JSON.stringify({ body: messageBody, image_url: imageDataUri }),
-      });
+
+      if (body) {
+        await api(msgPath, {
+          method: 'POST',
+          token,
+          body: JSON.stringify({ body }),
+        });
+      }
+
       await loadMessages();
     } catch (err) {
       console.error('Send message failed:', err);
@@ -636,16 +645,6 @@ export default function ThreadScreen() {
                         style={styles.chatImage}
                         resizeMode="cover"
                       />
-                      {item.body && item.body !== 'Sent a photo' && (
-                        <View style={[
-                          styles.imageCaptionWrap,
-                          sent ? styles.bubbleSent : (dark ? styles.bubbleReceivedDark : styles.bubbleReceived),
-                        ]}>
-                          <Text style={[styles.bubbleText, sent && styles.bubbleTextSent, dark && !sent && { color: '#fff' }]}>
-                            {item.body}
-                          </Text>
-                        </View>
-                      )}
                     </View>
                   ) : (
                     <View
@@ -781,11 +780,6 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 0,
   },
-  imageCaptionWrap: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-  },
-
   bubbleText: { fontSize: 17, color: '#000', lineHeight: 22 },
   bubbleTextSent: { color: '#fff' },
 
