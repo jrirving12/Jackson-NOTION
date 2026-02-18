@@ -18,7 +18,7 @@ import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAuth } from '@/context/AuthContext';
-import { api, Message } from '@/lib/api';
+import { api, Message, User } from '@/lib/api';
 import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
 import * as ImagePicker from 'expo-image-picker';
@@ -79,6 +79,9 @@ export default function ThreadScreen() {
   const [pickedImage, setPickedImage] = useState<string | null>(null);
   const [membersVisible, setMembersVisible] = useState(false);
   const [members, setMembers] = useState<ChannelMember[]>([]);
+  const [addingMember, setAddingMember] = useState(false);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [memberSearch, setMemberSearch] = useState('');
   const socketRef = useRef<Socket | null>(null);
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
@@ -205,14 +208,45 @@ export default function ThreadScreen() {
     if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
   };
 
-  const openMembers = async () => {
+  const loadMembers = async () => {
     if (!isChannel || !channelId || !token) return;
     try {
       const data = await api<{ members: ChannelMember[] }>(`/api/channels/${channelId}/members`, { token });
       setMembers(data.members);
-      setMembersVisible(true);
     } catch {
       showAlert('Error', 'Could not load members.');
+    }
+  };
+
+  const openMembers = async () => {
+    await loadMembers();
+    setMembersVisible(true);
+  };
+
+  const openAddMember = async () => {
+    if (!token) return;
+    try {
+      const data = await api<{ users: User[] }>('/api/users', { token });
+      setAllUsers(data.users.filter((u) => u.id !== user?.id));
+    } catch {
+      setAllUsers([]);
+    }
+    setMemberSearch('');
+    setAddingMember(true);
+  };
+
+  const addMember = async (userId: string) => {
+    if (!token || !channelId) return;
+    try {
+      await api(`/api/channels/${channelId}/members`, {
+        method: 'POST',
+        token,
+        body: JSON.stringify({ memberId: userId }),
+      });
+      await loadMembers();
+      setAddingMember(false);
+    } catch {
+      showAlert('Error', 'Could not add member.');
     }
   };
 
@@ -260,43 +294,117 @@ export default function ThreadScreen() {
       {/* Channel members modal */}
       <Modal visible={membersVisible} animationType="slide" presentationStyle="pageSheet">
         <View style={[styles.modalContainer, dark && { backgroundColor: '#1C1C1E' }]}>
-          <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
-            <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>{title}</Text>
-            <Text style={[styles.modalSubtitle, dark && { color: '#8E8E93' }]}>
-              {members.length} {members.length === 1 ? 'member' : 'members'}
-            </Text>
-          </View>
-          <FlatList
-            data={members}
-            keyExtractor={(m) => m.user_id}
-            contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
-            renderItem={({ item: m }) => {
-              const initials = m.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
-              return (
-                <View style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
-                  <View style={[styles.memberAvatar, { backgroundColor: hashColor(m.name) }]}>
-                    <Text style={styles.memberAvatarText}>{initials}</Text>
+          {!addingMember ? (
+            <>
+              <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <View style={styles.modalHeaderSide} />
+                  <View style={styles.modalHeaderCenter}>
+                    <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>{title}</Text>
+                    <Text style={[styles.modalSubtitle, dark && { color: '#8E8E93' }]}>
+                      {members.length} {members.length === 1 ? 'member' : 'members'}
+                    </Text>
                   </View>
-                  <View style={styles.memberInfo}>
-                    <Text style={[styles.memberName, dark && { color: '#fff' }]}>{m.name}</Text>
-                    <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{m.email}</Text>
-                  </View>
-                  {m.role === 'admin' && (
-                    <View style={styles.adminBadge}>
-                      <Text style={styles.adminBadgeText}>Admin</Text>
-                    </View>
-                  )}
+                  <TouchableOpacity style={styles.modalHeaderSide} onPress={openAddMember} activeOpacity={0.6}>
+                    <Ionicons name="add-circle" size={28} color="#007AFF" />
+                  </TouchableOpacity>
                 </View>
-              );
-            }}
-          />
-          <TouchableOpacity
-            style={[styles.modalDone, { marginBottom: insets.bottom + 8 }]}
-            onPress={() => setMembersVisible(false)}
-            activeOpacity={0.7}
-          >
-            <Text style={styles.modalDoneText}>Done</Text>
-          </TouchableOpacity>
+              </View>
+              <FlatList
+                data={members}
+                keyExtractor={(m) => m.user_id}
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
+                renderItem={({ item: m }) => {
+                  const initials = m.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <View style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}>
+                      <View style={[styles.memberAvatar, { backgroundColor: hashColor(m.name) }]}>
+                        <Text style={styles.memberAvatarText}>{initials}</Text>
+                      </View>
+                      <View style={styles.memberInfo}>
+                        <Text style={[styles.memberName, dark && { color: '#fff' }]}>{m.name}</Text>
+                        <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{m.email}</Text>
+                      </View>
+                      {m.role === 'admin' && (
+                        <View style={styles.adminBadge}>
+                          <Text style={styles.adminBadgeText}>Admin</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                }}
+              />
+              <TouchableOpacity
+                style={[styles.modalDone, { marginBottom: insets.bottom + 8 }]}
+                onPress={() => setMembersVisible(false)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.modalDoneText}>Done</Text>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <>
+              <View style={[styles.modalHeader, dark && { borderBottomColor: 'rgba(255,255,255,0.1)' }]}>
+                <View style={styles.modalHeaderRow}>
+                  <TouchableOpacity style={styles.modalHeaderSide} onPress={() => setAddingMember(false)} activeOpacity={0.6}>
+                    <Text style={styles.modalBackText}>Back</Text>
+                  </TouchableOpacity>
+                  <View style={styles.modalHeaderCenter}>
+                    <Text style={[styles.modalTitle, dark && { color: '#fff' }]}>Add Member</Text>
+                  </View>
+                  <View style={styles.modalHeaderSide} />
+                </View>
+                <View style={[styles.modalSearchWrap, dark && { backgroundColor: 'rgba(118,118,128,0.24)' }]}>
+                  <Ionicons name="search" size={16} color="#8E8E93" style={{ marginRight: 6 }} />
+                  <TextInput
+                    style={[styles.modalSearchInput, dark && { color: '#fff' }]}
+                    placeholder="Search users..."
+                    placeholderTextColor={dark ? '#636366' : '#8E8E93'}
+                    value={memberSearch}
+                    onChangeText={setMemberSearch}
+                    autoFocus
+                  />
+                </View>
+              </View>
+              <FlatList
+                data={allUsers.filter(
+                  (u) =>
+                    !members.some((m) => m.user_id === u.id) &&
+                    (u.name.toLowerCase().includes(memberSearch.toLowerCase()) ||
+                      u.email.toLowerCase().includes(memberSearch.toLowerCase()))
+                )}
+                keyExtractor={(u) => u.id}
+                keyboardShouldPersistTaps="handled"
+                contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 16 }}
+                ListEmptyComponent={
+                  <View style={{ padding: 24, alignItems: 'center' }}>
+                    <Text style={[{ fontSize: 15, color: '#8E8E93' }]}>
+                      {memberSearch.trim() ? 'No matching users' : 'All users are already members'}
+                    </Text>
+                  </View>
+                }
+                renderItem={({ item: u }) => {
+                  const initials = u.name.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase();
+                  return (
+                    <TouchableOpacity
+                      style={[styles.memberRow, dark && { borderBottomColor: 'rgba(255,255,255,0.08)' }]}
+                      onPress={() => addMember(u.id)}
+                      activeOpacity={0.6}
+                    >
+                      <View style={[styles.memberAvatar, { backgroundColor: hashColor(u.name) }]}>
+                        <Text style={styles.memberAvatarText}>{initials}</Text>
+                      </View>
+                      <View style={styles.memberInfo}>
+                        <Text style={[styles.memberName, dark && { color: '#fff' }]}>{u.name}</Text>
+                        <Text style={[styles.memberEmail, dark && { color: '#8E8E93' }]}>{u.email}</Text>
+                      </View>
+                      <Ionicons name="add-circle-outline" size={24} color="#007AFF" />
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+            </>
+          )}
         </View>
       </Modal>
 
@@ -580,12 +688,28 @@ const styles = StyleSheet.create({
     paddingTop: 20,
     paddingBottom: 16,
     paddingHorizontal: 20,
-    alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: 'rgba(0,0,0,0.1)',
   },
+  modalHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  modalHeaderSide: { width: 50, alignItems: 'center' },
+  modalHeaderCenter: { flex: 1, alignItems: 'center' },
   modalTitle: { fontSize: 20, fontWeight: '700', color: '#000' },
   modalSubtitle: { fontSize: 14, color: '#8E8E93', marginTop: 4 },
+  modalBackText: { fontSize: 17, color: '#007AFF' },
+  modalSearchWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(118,118,128,0.12)',
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    height: 36,
+    marginTop: 12,
+  },
+  modalSearchInput: { flex: 1, fontSize: 16, color: '#000', paddingVertical: 0 },
 
   memberRow: {
     flexDirection: 'row',
