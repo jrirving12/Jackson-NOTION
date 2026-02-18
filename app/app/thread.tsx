@@ -132,6 +132,11 @@ export default function ThreadScreen() {
         setDisplayName(data.name);
       }
     });
+    socket.on('channel_members_changed', (data: { channelId: string }) => {
+      if (isChannel && data.channelId === channelId) {
+        loadMembers();
+      }
+    });
     return () => {
       if (isChannel && channelId) socket.emit('leave_channel', channelId);
       if (!isChannel && dmThreadId) socket.emit('leave_dm', dmThreadId);

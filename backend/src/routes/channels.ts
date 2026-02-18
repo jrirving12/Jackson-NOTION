@@ -66,7 +66,19 @@ router.post('/:id/members', async (req: Request, res: Response) => {
     const [actorName, addedName] = await Promise.all([getUserName(userId), getUserName(memberId)]);
     const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} added ${addedName} to the channel`);
     const io = req.app.get('io') as Server;
-    if (io) emitChannelMessage(io, req.params.id, sysMsg);
+    if (io) {
+      emitChannelMessage(io, req.params.id, sysMsg);
+      const pool = getPool();
+      const membersResult = await pool.query(
+        'SELECT user_id FROM channel_members WHERE channel_id = $1',
+        [req.params.id]
+      );
+      for (const row of membersResult.rows) {
+        emitToUser(io, row.user_id as string, 'channel_members_changed', {
+          channelId: req.params.id,
+        });
+      }
+    }
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'Add member failed');
@@ -115,7 +127,22 @@ router.delete('/:id/members/:memberId', async (req: Request, res: Response) => {
     const actorName = await getUserName(userId);
     const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} removed ${removedName} from the channel`);
     const io = req.app.get('io') as Server;
-    if (io) emitChannelMessage(io, req.params.id, sysMsg);
+    if (io) {
+      emitChannelMessage(io, req.params.id, sysMsg);
+      const pool = getPool();
+      const membersResult = await pool.query(
+        'SELECT user_id FROM channel_members WHERE channel_id = $1',
+        [req.params.id]
+      );
+      for (const row of membersResult.rows) {
+        emitToUser(io, row.user_id as string, 'channel_members_changed', {
+          channelId: req.params.id,
+        });
+      }
+      emitToUser(io, req.params.memberId, 'channel_members_changed', {
+        channelId: req.params.id,
+      });
+    }
     res.json({ ok: true });
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_ADMIN') {
