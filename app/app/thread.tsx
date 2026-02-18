@@ -23,6 +23,7 @@ import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
 import * as ImagePicker from 'expo-image-picker';
 import * as FileSystem from 'expo-file-system';
+import * as ImageManipulator from 'expo-image-manipulator';
 import { showAlert } from '@/utils/alert';
 
 type ChannelMember = {
@@ -157,12 +158,22 @@ export default function ThreadScreen() {
     try {
       let imageDataUri: string | undefined;
       if (savedImage) {
-        const base64 = await FileSystem.readAsStringAsync(savedImage, {
-          encoding: FileSystem.EncodingType.Base64,
-        });
-        const ext = savedImage.split('.').pop()?.toLowerCase() ?? 'jpeg';
-        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-        imageDataUri = `data:${mime};base64,${base64}`;
+        try {
+          const resized = await ImageManipulator.manipulateAsync(
+            savedImage,
+            [{ resize: { width: 600 } }],
+            { compress: 0.6, format: ImageManipulator.SaveFormat.JPEG }
+          );
+          const base64 = await FileSystem.readAsStringAsync(resized.uri, {
+            encoding: FileSystem.EncodingType.Base64,
+          });
+          imageDataUri = `data:image/jpeg;base64,${base64}`;
+        } catch (imgErr) {
+          console.error('Image processing failed:', imgErr);
+          setPickedImage(savedImage);
+          setInput(savedInput);
+          return;
+        }
       }
       const msgPath = isChannel
         ? `/api/messages/channel/${channelId}`
@@ -174,8 +185,10 @@ export default function ThreadScreen() {
         body: JSON.stringify({ body: messageBody, image_url: imageDataUri }),
       });
       await loadMessages();
-    } catch {
+    } catch (err) {
+      console.error('Send message failed:', err);
       setInput(savedInput);
+      setPickedImage(savedImage);
     } finally {
       sendingRef.current = false;
       setSending(false);
