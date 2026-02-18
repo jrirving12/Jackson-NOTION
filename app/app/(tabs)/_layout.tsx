@@ -27,6 +27,7 @@ export default function TabLayout() {
   const colorScheme = useColorScheme();
   const { token, loading } = useAuth();
   const router = useRouter();
+  const headerShown = useClientOnlyValue(false, true);
 
   useEffect(() => {
     if (!loading && !token) {
@@ -42,9 +43,7 @@ export default function TabLayout() {
     <Tabs
       screenOptions={{
         tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
-        // Disable the static render of the header on web
-        // to prevent a hydration error in React Navigation v6.
-        headerShown: useClientOnlyValue(false, true),
+        headerShown,
       }}>
       <Tabs.Screen
         name="index"
