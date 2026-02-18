@@ -1,10 +1,20 @@
 import { Router, Request, Response } from 'express';
+import { Server } from 'socket.io';
 import { requireAuth, AuthLocals } from '../middleware/auth.js';
 import * as channelService from '../services/channelService.js';
+import * as messageService from '../services/messageService.js';
+import { emitChannelMessage } from '../socket.js';
+import { getPool } from '../db/client.js';
 import { logger } from '../logger.js';
 
 const router = Router();
 router.use(requireAuth);
+
+async function getUserName(userId: string): Promise<string> {
+  const pool = getPool();
+  const result = await pool.query('SELECT name FROM users WHERE id = $1', [userId]);
+  return result.rows[0]?.name ?? 'Someone';
+}
 
 router.get('/', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
@@ -53,6 +63,10 @@ router.post('/:id/members', async (req: Request, res: Response) => {
   }
   try {
     await channelService.addMemberToChannel(req.params.id, memberId, userId);
+    const [actorName, addedName] = await Promise.all([getUserName(userId), getUserName(memberId)]);
+    const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} added ${addedName} to the channel`);
+    const io = req.app.get('io') as Server;
+    if (io) emitChannelMessage(io, req.params.id, sysMsg);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'Add member failed');
@@ -69,6 +83,10 @@ router.patch('/:id', async (req: Request, res: Response) => {
   }
   try {
     await channelService.renameChannel(req.params.id, name, userId);
+    const actorName = await getUserName(userId);
+    const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} renamed the channel to "${name.trim()}"`);
+    const io = req.app.get('io') as Server;
+    if (io) emitChannelMessage(io, req.params.id, sysMsg);
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'Rename channel failed');
@@ -79,7 +97,12 @@ router.patch('/:id', async (req: Request, res: Response) => {
 router.delete('/:id/members/:memberId', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   try {
+    const removedName = await getUserName(req.params.memberId);
     await channelService.removeMemberFromChannel(req.params.id, req.params.memberId, userId);
+    const actorName = await getUserName(userId);
+    const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} removed ${removedName} from the channel`);
+    const io = req.app.get('io') as Server;
+    if (io) emitChannelMessage(io, req.params.id, sysMsg);
     res.json({ ok: true });
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_ADMIN') {

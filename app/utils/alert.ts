@@ -7,7 +7,7 @@ import { Alert, Platform } from 'react-native';
 export function showAlert(
   title: string,
   message?: string,
-  options?: { text?: string; onPress?: () => void }[]
+  options?: { text?: string; style?: string; onPress?: () => void }[]
 ): void {
   if (Platform.OS === 'web') {
     const fullMessage = message ? `${title}\n\n${message}` : title;

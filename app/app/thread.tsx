@@ -276,35 +276,30 @@ export default function ThreadScreen() {
     }
   };
 
-  const removeMember = async (memberId: string, memberName: string) => {
+  const removeMember = (memberId: string, memberName: string) => {
     if (!token || !channelId) return;
-    if (Platform.OS === 'ios') {
-      ActionSheetIOS.showActionSheetWithOptions(
+    showAlert(
+      'Remove Member',
+      `Remove ${memberName} from this channel?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
         {
-          options: ['Cancel', `Remove ${memberName}`],
-          cancelButtonIndex: 0,
-          destructiveButtonIndex: 1,
+          text: 'Remove',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await api(`/api/channels/${channelId}/members/${memberId}`, {
+                method: 'DELETE',
+                token,
+              });
+              await loadMembers();
+            } catch (e) {
+              showAlert('Error', e instanceof Error ? e.message : 'Could not remove member.');
+            }
+          },
         },
-        async (idx) => {
-          if (idx === 1) await doRemoveMember(memberId);
-        },
-      );
-    } else {
-      await doRemoveMember(memberId);
-    }
-  };
-
-  const doRemoveMember = async (memberId: string) => {
-    if (!token || !channelId) return;
-    try {
-      await api(`/api/channels/${channelId}/members/${memberId}`, {
-        method: 'DELETE',
-        token,
-      });
-      await loadMembers();
-    } catch (e) {
-      showAlert('Error', e instanceof Error ? e.message : 'Could not remove member.');
-    }
+      ]
+    );
   };
 
   if (!user) return null;
@@ -563,13 +558,25 @@ export default function ThreadScreen() {
             </View>
           }
           renderItem={({ item, index }) => {
+            if (item.type === 'system') {
+              return (
+                <View style={styles.systemMsgRow}>
+                  <Text style={[styles.systemMsgText, dark && { color: '#636366' }]}>
+                    {item.body}
+                  </Text>
+                </View>
+              );
+            }
+
             const sent = isSent(item);
             const prev = index > 0 ? messages[index - 1] : null;
             const next = index < messages.length - 1 ? messages[index + 1] : null;
             const showDate = !prev || !isSameDay(prev.created_at, item.created_at);
-            const showSender = isChannel && !sent && (!prev || prev.sender_id !== item.sender_id);
-            const isFirstInGroup = !prev || prev.sender_id !== item.sender_id || showDate;
-            const isLastInGroup = !next || next.sender_id !== item.sender_id || (next && !isSameDay(item.created_at, next.created_at));
+            const prevIsSystem = prev?.type === 'system';
+            const nextIsSystem = next?.type === 'system';
+            const showSender = isChannel && !sent && (!prev || prev.sender_id !== item.sender_id || prevIsSystem);
+            const isFirstInGroup = !prev || prev.sender_id !== item.sender_id || showDate || prevIsSystem;
+            const isLastInGroup = !next || next.sender_id !== item.sender_id || nextIsSystem || (next && !isSameDay(item.created_at, next.created_at));
 
             return (
               <View>
@@ -716,6 +723,19 @@ const styles = StyleSheet.create({
 
   bubbleText: { fontSize: 17, color: '#000', lineHeight: 22 },
   bubbleTextSent: { color: '#fff' },
+
+  systemMsgRow: {
+    alignItems: 'center',
+    marginVertical: 8,
+    paddingHorizontal: 32,
+  },
+  systemMsgText: {
+    fontSize: 13,
+    color: '#8E8E93',
+    fontStyle: 'italic',
+    textAlign: 'center',
+    lineHeight: 18,
+  },
 
   bubbleTime: { fontSize: 11, color: '#8E8E93', marginTop: 2, marginBottom: 4 },
   bubbleTimeLeft: { marginLeft: 4 },

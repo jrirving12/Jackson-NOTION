@@ -4,6 +4,7 @@ export interface Message {
   id: string;
   sender_id: string;
   body: string;
+  type: string;
   created_at: Date;
   channel_id: string | null;
   dm_thread_id: string | null;
@@ -29,7 +30,7 @@ export async function getChannelMessages(
   if (memberCheck.rows.length === 0) return [];
 
   let query = `
-    SELECT m.id, m.sender_id, m.body, m.created_at, m.channel_id, m.dm_thread_id,
+    SELECT m.id, m.sender_id, m.body, m.type, m.created_at, m.channel_id, m.dm_thread_id,
            u.name AS sender_name, u.email AS sender_email
     FROM messages m
     JOIN users u ON u.id = m.sender_id
@@ -59,7 +60,7 @@ export async function getDMMessages(
   if (threadCheck.rows.length === 0) return [];
 
   let query = `
-    SELECT m.id, m.sender_id, m.body, m.created_at, m.channel_id, m.dm_thread_id,
+    SELECT m.id, m.sender_id, m.body, m.type, m.created_at, m.channel_id, m.dm_thread_id,
            u.name AS sender_name, u.email AS sender_email
     FROM messages m
     JOIN users u ON u.id = m.sender_id
@@ -89,16 +90,16 @@ export async function sendChannelMessage(
   if (memberCheck.rows.length === 0) throw new Error('NOT_MEMBER');
 
   const result = await pool.query(
-    `INSERT INTO messages (channel_id, sender_id, body) VALUES ($1, $2, $3)
-     RETURNING id, sender_id, body, created_at, channel_id, dm_thread_id`,
+    `INSERT INTO messages (channel_id, sender_id, body, type) VALUES ($1, $2, $3, 'message')
+     RETURNING id, sender_id, body, type, created_at, channel_id, dm_thread_id`,
     [channelId, senderId, body.trim()]
   );
   const row = result.rows[0];
-  const user = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
+  const userRow = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
   return mapMessageRow({
     ...row,
-    sender_name: user.rows[0]?.name ?? '',
-    sender_email: user.rows[0]?.email ?? '',
+    sender_name: userRow.rows[0]?.name ?? '',
+    sender_email: userRow.rows[0]?.email ?? '',
   });
 }
 
@@ -115,16 +116,36 @@ export async function sendDMMessage(
   if (threadCheck.rows.length === 0) throw new Error('NOT_IN_THREAD');
 
   const result = await pool.query(
-    `INSERT INTO messages (dm_thread_id, sender_id, body) VALUES ($1, $2, $3)
-     RETURNING id, sender_id, body, created_at, channel_id, dm_thread_id`,
+    `INSERT INTO messages (dm_thread_id, sender_id, body, type) VALUES ($1, $2, $3, 'message')
+     RETURNING id, sender_id, body, type, created_at, channel_id, dm_thread_id`,
     [dmThreadId, senderId, body.trim()]
   );
   const row = result.rows[0];
-  const user = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
+  const userRow = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
   return mapMessageRow({
     ...row,
-    sender_name: user.rows[0]?.name ?? '',
-    sender_email: user.rows[0]?.email ?? '',
+    sender_name: userRow.rows[0]?.name ?? '',
+    sender_email: userRow.rows[0]?.email ?? '',
+  });
+}
+
+export async function sendSystemMessage(
+  channelId: string,
+  actorId: string,
+  body: string
+): Promise<MessageWithSender> {
+  const pool = getPool();
+  const result = await pool.query(
+    `INSERT INTO messages (channel_id, sender_id, body, type) VALUES ($1, $2, $3, 'system')
+     RETURNING id, sender_id, body, type, created_at, channel_id, dm_thread_id`,
+    [channelId, actorId, body]
+  );
+  const row = result.rows[0];
+  const userRow = await pool.query('SELECT name, email FROM users WHERE id = $1', [actorId]);
+  return mapMessageRow({
+    ...row,
+    sender_name: userRow.rows[0]?.name ?? '',
+    sender_email: userRow.rows[0]?.email ?? '',
   });
 }
 
@@ -133,6 +154,7 @@ function mapMessageRow(row: Record<string, unknown>): MessageWithSender {
     id: row.id as string,
     sender_id: row.sender_id as string,
     body: row.body as string,
+    type: (row.type as string) ?? 'message',
     created_at: row.created_at as Date,
     channel_id: (row.channel_id as string) ?? null,
     dm_thread_id: (row.dm_thread_id as string) ?? null,
