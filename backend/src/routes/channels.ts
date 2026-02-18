@@ -3,7 +3,7 @@ import { Server } from 'socket.io';
 import { requireAuth, AuthLocals } from '../middleware/auth.js';
 import * as channelService from '../services/channelService.js';
 import * as messageService from '../services/messageService.js';
-import { emitChannelMessage } from '../socket.js';
+import { emitChannelMessage, emitToUser } from '../socket.js';
 import { getPool } from '../db/client.js';
 import { logger } from '../logger.js';
 
@@ -86,7 +86,20 @@ router.patch('/:id', async (req: Request, res: Response) => {
     const actorName = await getUserName(userId);
     const sysMsg = await messageService.sendSystemMessage(req.params.id, userId, `${actorName} renamed the channel to "${name.trim()}"`);
     const io = req.app.get('io') as Server;
-    if (io) emitChannelMessage(io, req.params.id, sysMsg);
+    if (io) {
+      emitChannelMessage(io, req.params.id, sysMsg);
+      const pool = getPool();
+      const membersResult = await pool.query(
+        'SELECT user_id FROM channel_members WHERE channel_id = $1',
+        [req.params.id]
+      );
+      for (const row of membersResult.rows) {
+        emitToUser(io, row.user_id as string, 'channel_renamed', {
+          channelId: req.params.id,
+          name: name.trim(),
+        });
+      }
+    }
     res.json({ ok: true });
   } catch (err) {
     logger.error({ err }, 'Rename channel failed');

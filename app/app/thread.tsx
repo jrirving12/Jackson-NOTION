@@ -127,6 +127,11 @@ export default function ThreadScreen() {
     socket.on('new_message', (msg: Message) => {
       setMessages((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
     });
+    socket.on('channel_renamed', (data: { channelId: string; name: string }) => {
+      if (isChannel && data.channelId === channelId) {
+        setDisplayName(data.name);
+      }
+    });
     return () => {
       if (isChannel && channelId) socket.emit('leave_channel', channelId);
       if (!isChannel && dmThreadId) socket.emit('leave_dm', dmThreadId);

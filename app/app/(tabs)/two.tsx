@@ -123,6 +123,14 @@ export default function MessagesScreen() {
     });
     socketRef.current = socket;
 
+    socket.on('channel_renamed', (data: { channelId: string; name: string }) => {
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.type === 'channel' && c.id === data.channelId ? { ...c, name: data.name } : c
+        )
+      );
+    });
+
     socket.on('conversation_update', (update: ConversationUpdate) => {
       const key = `${update.type}-${update.id}`;
       const isFromMe = update.senderId === user?.id;
