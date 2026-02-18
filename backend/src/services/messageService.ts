@@ -5,6 +5,7 @@ export interface Message {
   sender_id: string;
   body: string;
   type: string;
+  image_url: string | null;
   created_at: Date;
   channel_id: string | null;
   dm_thread_id: string | null;
@@ -30,7 +31,7 @@ export async function getChannelMessages(
   if (memberCheck.rows.length === 0) return [];
 
   let query = `
-    SELECT m.id, m.sender_id, m.body, m.type, m.created_at, m.channel_id, m.dm_thread_id,
+    SELECT m.id, m.sender_id, m.body, m.type, m.image_url, m.created_at, m.channel_id, m.dm_thread_id,
            u.name AS sender_name, u.email AS sender_email
     FROM messages m
     JOIN users u ON u.id = m.sender_id
@@ -60,7 +61,7 @@ export async function getDMMessages(
   if (threadCheck.rows.length === 0) return [];
 
   let query = `
-    SELECT m.id, m.sender_id, m.body, m.type, m.created_at, m.channel_id, m.dm_thread_id,
+    SELECT m.id, m.sender_id, m.body, m.type, m.image_url, m.created_at, m.channel_id, m.dm_thread_id,
            u.name AS sender_name, u.email AS sender_email
     FROM messages m
     JOIN users u ON u.id = m.sender_id
@@ -80,7 +81,8 @@ export async function getDMMessages(
 export async function sendChannelMessage(
   channelId: string,
   senderId: string,
-  body: string
+  body: string,
+  imageUrl?: string | null
 ): Promise<MessageWithSender> {
   const pool = getPool();
   const memberCheck = await pool.query(
@@ -90,9 +92,9 @@ export async function sendChannelMessage(
   if (memberCheck.rows.length === 0) throw new Error('NOT_MEMBER');
 
   const result = await pool.query(
-    `INSERT INTO messages (channel_id, sender_id, body, type) VALUES ($1, $2, $3, 'message')
-     RETURNING id, sender_id, body, type, created_at, channel_id, dm_thread_id`,
-    [channelId, senderId, body.trim()]
+    `INSERT INTO messages (channel_id, sender_id, body, type, image_url) VALUES ($1, $2, $3, 'message', $4)
+     RETURNING id, sender_id, body, type, image_url, created_at, channel_id, dm_thread_id`,
+    [channelId, senderId, body.trim(), imageUrl || null]
   );
   const row = result.rows[0];
   const userRow = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
@@ -106,7 +108,8 @@ export async function sendChannelMessage(
 export async function sendDMMessage(
   dmThreadId: string,
   senderId: string,
-  body: string
+  body: string,
+  imageUrl?: string | null
 ): Promise<MessageWithSender> {
   const pool = getPool();
   const threadCheck = await pool.query(
@@ -116,9 +119,9 @@ export async function sendDMMessage(
   if (threadCheck.rows.length === 0) throw new Error('NOT_IN_THREAD');
 
   const result = await pool.query(
-    `INSERT INTO messages (dm_thread_id, sender_id, body, type) VALUES ($1, $2, $3, 'message')
-     RETURNING id, sender_id, body, type, created_at, channel_id, dm_thread_id`,
-    [dmThreadId, senderId, body.trim()]
+    `INSERT INTO messages (dm_thread_id, sender_id, body, type, image_url) VALUES ($1, $2, $3, 'message', $4)
+     RETURNING id, sender_id, body, type, image_url, created_at, channel_id, dm_thread_id`,
+    [dmThreadId, senderId, body.trim(), imageUrl || null]
   );
   const row = result.rows[0];
   const userRow = await pool.query('SELECT name, email FROM users WHERE id = $1', [senderId]);
@@ -155,6 +158,7 @@ function mapMessageRow(row: Record<string, unknown>): MessageWithSender {
     sender_id: row.sender_id as string,
     body: row.body as string,
     type: (row.type as string) ?? 'message',
+    image_url: (row.image_url as string) ?? null,
     created_at: row.created_at as Date,
     channel_id: (row.channel_id as string) ?? null,
     dm_thread_id: (row.dm_thread_id as string) ?? null,

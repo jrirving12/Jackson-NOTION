@@ -25,13 +25,13 @@ router.get('/channel/:channelId', async (req: Request, res: Response) => {
 router.post('/channel/:channelId', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   const { channelId } = req.params;
-  const { body } = req.body as { body?: string };
+  const { body, image_url } = req.body as { body?: string; image_url?: string };
   if (!body || typeof body !== 'string') {
     res.status(400).json({ error: 'VALIDATION_ERROR', message: 'body required' });
     return;
   }
   try {
-    const message = await messageService.sendChannelMessage(channelId, userId, body);
+    const message = await messageService.sendChannelMessage(channelId, userId, body, image_url);
     const io = req.app.get('io') as Server;
     if (io) {
       emitChannelMessage(io, channelId, message);
@@ -64,13 +64,13 @@ router.get('/dm/:threadId', async (req: Request, res: Response) => {
 router.post('/dm/:threadId', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   const { threadId } = req.params;
-  const { body } = req.body as { body?: string };
+  const { body, image_url } = req.body as { body?: string; image_url?: string };
   if (!body || typeof body !== 'string') {
     res.status(400).json({ error: 'VALIDATION_ERROR', message: 'body required' });
     return;
   }
   try {
-    const message = await messageService.sendDMMessage(threadId, userId, body);
+    const message = await messageService.sendDMMessage(threadId, userId, body, image_url);
     const io = req.app.get('io') as Server;
     if (io) {
       emitDMMessage(io, threadId, message);

@@ -46,6 +46,7 @@ export type Message = {
   sender_id: string;
   body: string;
   type?: string;
+  image_url?: string | null;
   created_at: string;
   sender_name: string;
   sender_email: string;

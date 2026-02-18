@@ -22,6 +22,7 @@ import { api, Message, User } from '@/lib/api';
 import { API_BASE_URL } from '@/constants/Config';
 import { io, Socket } from 'socket.io-client';
 import * as ImagePicker from 'expo-image-picker';
+import * as FileSystem from 'expo-file-system';
 import { showAlert } from '@/utils/alert';
 
 type ChannelMember = {
@@ -89,8 +90,9 @@ export default function ThreadScreen() {
   const listRef = useRef<FlatList>(null);
   const inputRef = useRef<TextInput>(null);
   const isChannel = Boolean(channelId);
+  const [displayName, setDisplayName] = useState(threadName || (isChannel ? 'Channel' : 'Message'));
 
-  const title = threadName || (isChannel ? 'Channel' : 'Message');
+  const title = displayName;
 
   const loadMessages = useCallback(async () => {
     if (!token) return;
@@ -149,17 +151,27 @@ export default function ThreadScreen() {
     sendingRef.current = true;
     setSending(true);
     const savedInput = input;
+    const savedImage = pickedImage;
     setInput('');
     setPickedImage(null);
     try {
-      const path = isChannel
+      let imageDataUri: string | undefined;
+      if (savedImage) {
+        const base64 = await FileSystem.readAsStringAsync(savedImage, {
+          encoding: FileSystem.EncodingType.Base64,
+        });
+        const ext = savedImage.split('.').pop()?.toLowerCase() ?? 'jpeg';
+        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+        imageDataUri = `data:${mime};base64,${base64}`;
+      }
+      const msgPath = isChannel
         ? `/api/messages/channel/${channelId}`
         : `/api/messages/dm/${dmThreadId}`;
-      const messageBody = pickedImage ? (body || '[Photo]') : body;
-      await api(path, {
+      const messageBody = body || (savedImage ? 'Sent a photo' : '');
+      await api(msgPath, {
         method: 'POST',
         token,
-        body: JSON.stringify({ body: messageBody }),
+        body: JSON.stringify({ body: messageBody, image_url: imageDataUri }),
       });
       await loadMessages();
     } catch {
@@ -193,7 +205,7 @@ export default function ThreadScreen() {
       showAlert('Permission needed', 'Camera access is required to take photos.');
       return;
     }
-    const result = await ImagePicker.launchCameraAsync({ quality: 0.8, allowsEditing: true });
+    const result = await ImagePicker.launchCameraAsync({ quality: 0.5, allowsEditing: true, maxWidth: 800, maxHeight: 800 } as ImagePicker.ImagePickerOptions);
     if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
   };
 
@@ -205,9 +217,9 @@ export default function ThreadScreen() {
     }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ['images'],
-      quality: 0.8,
+      quality: 0.5,
       allowsEditing: true,
-    });
+    } as ImagePicker.ImagePickerOptions);
     if (!result.canceled && result.assets[0]) setPickedImage(result.assets[0].uri);
   };
 
@@ -254,7 +266,7 @@ export default function ThreadScreen() {
   };
 
   const openSettings = () => {
-    setEditName(threadName || '');
+    setEditName(displayName);
     setSettingsVisible(true);
   };
 
@@ -267,6 +279,7 @@ export default function ThreadScreen() {
         token,
         body: JSON.stringify({ name: editName.trim() }),
       });
+      setDisplayName(editName.trim());
       showAlert('Renamed', `Channel renamed to "${editName.trim()}".`);
       setSettingsVisible(false);
     } catch {
@@ -317,6 +330,7 @@ export default function ThreadScreen() {
           headerStyle: { backgroundColor: dark ? '#000' : '#fff' },
           headerTintColor: dark ? '#fff' : '#000',
           headerShadowVisible: false,
+          headerTitleAlign: 'center',
           headerTitle: () =>
             isChannel ? (
               <TouchableOpacity onPress={openMembers} activeOpacity={0.6}>
@@ -599,19 +613,44 @@ export default function ThreadScreen() {
                     !isFirstInGroup && styles.bubbleRowTight,
                   ]}
                 >
-                  <View
-                    style={[
-                      styles.bubble,
-                      sent ? styles.bubbleSent : (dark ? styles.bubbleReceivedDark : styles.bubbleReceived),
+                  {item.image_url ? (
+                    <View style={[
+                      styles.imageBubble,
                       sent
                         ? { borderTopRightRadius: isFirstInGroup ? 18 : 4, borderBottomRightRadius: isLastInGroup ? 18 : 4 }
                         : { borderTopLeftRadius: isFirstInGroup ? 18 : 4, borderBottomLeftRadius: isLastInGroup ? 18 : 4 },
-                    ]}
-                  >
-                    <Text style={[styles.bubbleText, sent && styles.bubbleTextSent, dark && !sent && { color: '#fff' }]}>
-                      {item.body}
-                    </Text>
-                  </View>
+                    ]}>
+                      <Image
+                        source={{ uri: item.image_url }}
+                        style={styles.chatImage}
+                        resizeMode="cover"
+                      />
+                      {item.body && item.body !== 'Sent a photo' && (
+                        <View style={[
+                          styles.imageCaptionWrap,
+                          sent ? styles.bubbleSent : (dark ? styles.bubbleReceivedDark : styles.bubbleReceived),
+                        ]}>
+                          <Text style={[styles.bubbleText, sent && styles.bubbleTextSent, dark && !sent && { color: '#fff' }]}>
+                            {item.body}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ) : (
+                    <View
+                      style={[
+                        styles.bubble,
+                        sent ? styles.bubbleSent : (dark ? styles.bubbleReceivedDark : styles.bubbleReceived),
+                        sent
+                          ? { borderTopRightRadius: isFirstInGroup ? 18 : 4, borderBottomRightRadius: isLastInGroup ? 18 : 4 }
+                          : { borderTopLeftRadius: isFirstInGroup ? 18 : 4, borderBottomLeftRadius: isLastInGroup ? 18 : 4 },
+                      ]}
+                    >
+                      <Text style={[styles.bubbleText, sent && styles.bubbleTextSent, dark && !sent && { color: '#fff' }]}>
+                        {item.body}
+                      </Text>
+                    </View>
+                  )}
                 </View>
                 {isLastInGroup && (
                   <Text
@@ -720,6 +759,21 @@ const styles = StyleSheet.create({
   bubbleSent: { backgroundColor: '#007AFF' },
   bubbleReceived: { backgroundColor: '#E5E5EA' },
   bubbleReceivedDark: { backgroundColor: '#26252A' },
+
+  imageBubble: {
+    borderRadius: 18,
+    overflow: 'hidden',
+    maxWidth: 260,
+  },
+  chatImage: {
+    width: 260,
+    height: 200,
+    borderRadius: 0,
+  },
+  imageCaptionWrap: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
 
   bubbleText: { fontSize: 17, color: '#000', lineHeight: 22 },
   bubbleTextSent: { color: '#fff' },

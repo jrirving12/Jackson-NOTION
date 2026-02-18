@@ -64,6 +64,7 @@ CREATE TABLE IF NOT EXISTS messages (
   sender_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   body          TEXT NOT NULL,
   type          TEXT NOT NULL DEFAULT 'message',
+  image_url     TEXT,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   channel_id    UUID REFERENCES channels(id) ON DELETE CASCADE,
   dm_thread_id  UUID REFERENCES dm_threads(id) ON DELETE CASCADE,

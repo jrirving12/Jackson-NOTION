@@ -22,7 +22,7 @@ app.use(cors({
   origin: config.nodeEnv === 'production' ? config.frontendUrl : true,
   credentials: true,
 }));
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 
 app.use('/api/health', healthRouter);
 app.use('/api/auth', authRouter);
