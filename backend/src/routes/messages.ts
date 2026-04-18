@@ -25,13 +25,19 @@ router.get('/channel/:channelId', async (req: Request, res: Response) => {
 router.post('/channel/:channelId', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   const { channelId } = req.params;
-  const { body, image_url } = req.body as { body?: string; image_url?: string };
-  if (!body || typeof body !== 'string') {
-    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'body required' });
-    return;
-  }
+  const { body, image_url, attachments } = req.body as {
+    body?: string;
+    image_url?: string;
+    attachments?: unknown;
+  };
   try {
-    const message = await messageService.sendChannelMessage(channelId, userId, body, image_url);
+    const message = await messageService.sendChannelMessage(channelId, userId, {
+      body,
+      imageUrl: image_url,
+      attachments: Array.isArray(attachments)
+        ? (attachments as messageService.MessageAttachment[])
+        : [],
+    });
     const io = req.app.get('io') as Server;
     if (io) {
       emitChannelMessage(io, channelId, message);
@@ -41,6 +47,13 @@ router.post('/channel/:channelId', async (req: Request, res: Response) => {
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_MEMBER') {
       res.status(403).json({ error: 'NOT_MEMBER' });
+      return;
+    }
+    if (err instanceof Error && err.message === 'EMPTY_MESSAGE') {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Message must have body, image, or at least one attachment',
+      });
       return;
     }
     logger.error({ err }, 'Send channel message failed');
@@ -64,13 +77,19 @@ router.get('/dm/:threadId', async (req: Request, res: Response) => {
 router.post('/dm/:threadId', async (req: Request, res: Response) => {
   const { userId } = res.locals as AuthLocals;
   const { threadId } = req.params;
-  const { body, image_url } = req.body as { body?: string; image_url?: string };
-  if (!body || typeof body !== 'string') {
-    res.status(400).json({ error: 'VALIDATION_ERROR', message: 'body required' });
-    return;
-  }
+  const { body, image_url, attachments } = req.body as {
+    body?: string;
+    image_url?: string;
+    attachments?: unknown;
+  };
   try {
-    const message = await messageService.sendDMMessage(threadId, userId, body, image_url);
+    const message = await messageService.sendDMMessage(threadId, userId, {
+      body,
+      imageUrl: image_url,
+      attachments: Array.isArray(attachments)
+        ? (attachments as messageService.MessageAttachment[])
+        : [],
+    });
     const io = req.app.get('io') as Server;
     if (io) {
       emitDMMessage(io, threadId, message);
@@ -80,6 +99,13 @@ router.post('/dm/:threadId', async (req: Request, res: Response) => {
   } catch (err) {
     if (err instanceof Error && err.message === 'NOT_IN_THREAD') {
       res.status(403).json({ error: 'NOT_IN_THREAD' });
+      return;
+    }
+    if (err instanceof Error && err.message === 'EMPTY_MESSAGE') {
+      res.status(400).json({
+        error: 'VALIDATION_ERROR',
+        message: 'Message must have body, image, or at least one attachment',
+      });
       return;
     }
     logger.error({ err }, 'Send DM message failed');

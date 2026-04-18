@@ -58,13 +58,16 @@ CREATE TABLE IF NOT EXISTS dm_threads (
 CREATE INDEX IF NOT EXISTS idx_dm_threads_user1 ON dm_threads(user1_id);
 CREATE INDEX IF NOT EXISTS idx_dm_threads_user2 ON dm_threads(user2_id);
 
--- Messages (either in a channel or in a DM thread)
+-- Messages (either in a channel or in a DM thread). `attachments` holds
+-- structured CRM refs (companies, people, opportunities, etc.) and links as
+-- JSONB so the schema stays stable as new attachment kinds are added.
 CREATE TABLE IF NOT EXISTS messages (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   sender_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  body          TEXT NOT NULL,
+  body          TEXT NOT NULL DEFAULT '',
   type          TEXT NOT NULL DEFAULT 'message',
   image_url     TEXT,
+  attachments   JSONB NOT NULL DEFAULT '[]'::jsonb,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   channel_id    UUID REFERENCES channels(id) ON DELETE CASCADE,
   dm_thread_id  UUID REFERENCES dm_threads(id) ON DELETE CASCADE,
