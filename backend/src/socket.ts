@@ -4,8 +4,20 @@ import { verifyToken } from './services/authService.js';
 import { logger } from './logger.js';
 
 export function createSocketServer(httpServer: HttpServer): Server {
+  const allowed = new Set<string>(
+    [
+      ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+      ...(process.env.ALLOWED_ORIGINS ?? '')
+        .split(',')
+        .map((value) => value.trim())
+        .filter((value) => value.length > 0),
+    ],
+  );
+  const corsOrigin: string | string[] | true =
+    allowed.size === 0 ? true : Array.from(allowed);
+
   const io = new Server(httpServer, {
-    cors: { origin: process.env.FRONTEND_URL ?? '*', credentials: true },
+    cors: { origin: corsOrigin, credentials: true },
     pingTimeout: 60000,
     pingInterval: 25000,
   });

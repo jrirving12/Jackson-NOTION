@@ -18,8 +18,21 @@ const httpServer = http.createServer(app);
 const io = createSocketServer(httpServer);
 app.set('io', io);
 
+const resolveCorsOrigin = () => {
+  if (config.nodeEnv !== 'production') return true;
+  const allowed = new Set<string>([
+    ...(config.frontendUrl ? [config.frontendUrl] : []),
+    ...config.allowedOrigins,
+  ]);
+  if (allowed.size === 0) return true;
+  return (origin: string | undefined, cb: (err: Error | null, ok?: boolean) => void) => {
+    if (!origin) return cb(null, true);
+    cb(null, allowed.has(origin));
+  };
+};
+
 app.use(cors({
-  origin: config.nodeEnv === 'production' ? config.frontendUrl : true,
+  origin: resolveCorsOrigin(),
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));
