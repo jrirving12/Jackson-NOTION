@@ -17,6 +17,10 @@ ENV NODE_ENV=production
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/package.json ./package.json
+# The migrate script reads raw .sql files from its own directory (dist/db/).
+# tsc only emits .js files, so we bring the .sql assets along manually.
+COPY --from=build /app/src/db/schema.sql ./dist/db/schema.sql
+COPY --from=build /app/src/db/migrations ./dist/db/migrations
 
 EXPOSE 3000
 CMD ["node", "dist/index.js"]
