@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { createHash, randomBytes } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { getPool } from '../db/client.js';
 import { getConfig } from '../config.js';
@@ -117,6 +118,99 @@ export async function listPendingUsers(): Promise<User[]> {
     ['pending_approval']
   );
   return result.rows.map((row) => mapRowToUser(row));
+}
+
+interface TwentyAccessTokenPayload {
+  sub: string;
+  userId?: string;
+  workspaceId?: string;
+  type?: string;
+  [key: string]: unknown;
+}
+
+function verifyTwentyAccessToken(token: string): TwentyAccessTokenPayload {
+  const config = getConfig();
+  if (!config.twentyAppSecret) {
+    throw new Error('SSO_NOT_CONFIGURED');
+  }
+  const decoded = jwt.decode(token, { complete: false }) as TwentyAccessTokenPayload | null;
+  if (!decoded || typeof decoded !== 'object') {
+    throw new Error('INVALID_TWENTY_TOKEN');
+  }
+  const workspaceId = decoded.workspaceId;
+  if (typeof workspaceId !== 'string' || workspaceId.length === 0) {
+    throw new Error('INVALID_TWENTY_TOKEN');
+  }
+  // Twenty signs access tokens with sha256(APP_SECRET + workspaceId + 'ACCESS').
+  // See packages/twenty-server/src/engine/core-modules/jwt/services/jwt-wrapper.service.ts
+  // (generateAppSecret). We mirror that derivation here so no shared SSO secret
+  // needs to be exposed to the browser.
+  const secret = createHash('sha256')
+    .update(`${config.twentyAppSecret}${workspaceId}ACCESS`)
+    .digest('hex');
+  const verified = jwt.verify(token, secret) as TwentyAccessTokenPayload;
+  return verified;
+}
+
+export interface SsoLoginInput {
+  twentyAccessToken: string;
+  email: string;
+  name: string;
+}
+
+/**
+ * Exchange a verified Twenty access token for a messenger session.
+ * Creates (or reactivates) the messenger user transparently so the
+ * CRM user never sees a messenger login form.
+ */
+export async function loginViaTwenty(input: SsoLoginInput): Promise<LoginResult> {
+  const normalizedEmail = input.email.trim().toLowerCase();
+  if (normalizedEmail.length === 0) {
+    throw new Error('VALIDATION_ERROR');
+  }
+  // Verify the Twenty token before touching the DB.
+  verifyTwentyAccessToken(input.twentyAccessToken);
+
+  const pool = getPool();
+  const existing = await pool.query(
+    'SELECT id, email, name, role, status, assigned_region_id, created_at FROM users WHERE LOWER(email) = LOWER($1)',
+    [normalizedEmail],
+  );
+
+  let user: User;
+  if (existing.rows.length === 0) {
+    const randomPassword = randomBytes(32).toString('hex');
+    const passwordHash = await bcrypt.hash(randomPassword, SALT_ROUNDS);
+    const inserted = await pool.query(
+      `INSERT INTO users (email, password_hash, name, role, status)
+       VALUES ($1, $2, $3, 'rep', 'active')
+       RETURNING id, email, name, role, status, assigned_region_id, created_at`,
+      [normalizedEmail, passwordHash, input.name.trim() || normalizedEmail],
+    );
+    user = mapRowToUser(inserted.rows[0]);
+    logger.info({ userId: user.id, email: user.email }, 'SSO-provisioned messenger user');
+  } else {
+    user = mapRowToUser(existing.rows[0]);
+    // If somebody registered but hadn't been approved, trust Twenty and activate them.
+    if (user.status !== 'active') {
+      const updated = await pool.query(
+        `UPDATE users SET status = 'active', updated_at = now()
+         WHERE id = $1
+         RETURNING id, email, name, role, status, assigned_region_id, created_at`,
+        [user.id],
+      );
+      user = mapRowToUser(updated.rows[0]);
+      logger.info({ userId: user.id }, 'SSO auto-activated messenger user');
+    }
+  }
+
+  const config = getConfig();
+  const token = jwt.sign(
+    { sub: user.id, email: user.email },
+    config.jwtSecret,
+    { expiresIn: '7d' },
+  );
+  return { user, token };
 }
 
 export async function setUserStatus(userId: string, status: UserStatus): Promise<User | null> {

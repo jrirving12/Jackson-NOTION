@@ -70,6 +70,62 @@ router.post('/register', async (req: Request, res: Response) => {
   }
 });
 
+router.post('/sso', async (req: Request, res: Response) => {
+  try {
+    const authHeader = req.header('authorization') ?? req.header('Authorization');
+    const twentyAccessToken =
+      typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+        ? authHeader.slice(7).trim()
+        : null;
+    const { email, name } = req.body as { email?: string; name?: string };
+    if (!twentyAccessToken) {
+      res.status(401).json({ error: 'MISSING_TWENTY_TOKEN' });
+      return;
+    }
+    if (!email) {
+      res.status(400).json({ error: 'VALIDATION_ERROR', message: 'email required' });
+      return;
+    }
+    const result = await authService.loginViaTwenty({
+      twentyAccessToken,
+      email,
+      name: name ?? '',
+    });
+    res.json({
+      user: {
+        id: result.user.id,
+        email: result.user.email,
+        name: result.user.name,
+        role: result.user.role,
+        status: result.user.status,
+        assigned_region_id: result.user.assigned_region_id,
+        created_at: result.user.created_at,
+      },
+      token: result.token,
+    });
+  } catch (err) {
+    if (err instanceof Error) {
+      if (err.message === 'SSO_NOT_CONFIGURED') {
+        res.status(503).json({
+          error: 'SSO_NOT_CONFIGURED',
+          message: 'Messenger is not configured for Twenty SSO. Set TWENTY_APP_SECRET on the messenger backend.',
+        });
+        return;
+      }
+      if (err.message === 'INVALID_TWENTY_TOKEN' || err.name === 'JsonWebTokenError' || err.name === 'TokenExpiredError') {
+        res.status(401).json({ error: 'INVALID_TWENTY_TOKEN', message: 'Twenty session is invalid or expired' });
+        return;
+      }
+      if (err.message === 'VALIDATION_ERROR') {
+        res.status(400).json({ error: 'VALIDATION_ERROR', message: 'email required' });
+        return;
+      }
+    }
+    logger.error({ err }, 'SSO login failed');
+    res.status(500).json({ error: 'INTERNAL_ERROR', message: 'SSO login failed' });
+  }
+});
+
 router.post('/login', async (req: Request, res: Response) => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };

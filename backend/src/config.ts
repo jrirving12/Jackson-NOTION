@@ -13,6 +13,8 @@ export function getConfig() {
     .map((value) => value.trim())
     .filter((value) => value.length > 0);
 
+  const twentyAppSecret = process.env.TWENTY_APP_SECRET;
+
   if (!jwtSecret && nodeEnv === 'production') {
     throw new Error('JWT_SECRET must be set in production');
   }
@@ -24,5 +26,6 @@ export function getConfig() {
     nodeEnv,
     frontendUrl,
     allowedOrigins,
+    twentyAppSecret: twentyAppSecret ?? null,
   };
 }
